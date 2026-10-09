@@ -21,14 +21,17 @@ const menuItems = [
   },
   {
     name: 'Membership',
+    path: '/dashboard/membership/list',
     icon: UserCheck,
     submenus: [
       { name: 'Membership List', path: '/dashboard/membership/list' },
-      { name: 'Unapproved Membership', path: '/dashboard/membership/unapproved' },
+      { name: 'Unapproved Members', path: '/dashboard/membership/unapproved' },
+      { name: 'Register New Member', path: '/dashboard/membership/register' },
     ],
   },
   {
     name: 'Receipts',
+    path: '/dashboard/receipts/entry',
     icon: FileText,
     submenus: [
       { name: 'Receipt Entry', path: '/dashboard/receipts/entry' },
@@ -37,6 +40,7 @@ const menuItems = [
   },
   {
     name: 'User',
+    path: '/dashboard/users/roles',
     icon: Users,
     submenus: [
       { name: 'Roles & Privileges', path: '/dashboard/users/roles' },
@@ -45,6 +49,7 @@ const menuItems = [
   },
   {
     name: 'Masters',
+    path: '/dashboard/master/location-setup',
     icon: Map,
     submenus: [
       {
@@ -83,7 +88,9 @@ export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
 
   // Submenus expansion state (keyed by menu item name)
-  const [expandedMenus, setExpandedMenus] = useState({});
+  const [expandedMenus, setExpandedMenus] = useState({
+    Membership: true,
+  });
 
   // Automatically keep the active parent menu expanded when navigating to any of its submenus
   useEffect(() => {
@@ -118,7 +125,7 @@ export default function Sidebar({ isOpen, onClose }) {
   return (
     <aside
       className={clsx(
-        'w-64 shrink-0 flex flex-col bg-[#200200] text-[#FAF7F2] select-none z-30 transition-transform duration-300 ease-in-out',
+        'w-64 shrink-0 flex flex-col bg-[#200200] text-[#FAF7F2] select-none z-30 transition-transform duration-300 ease-in-out text-[15px] leading-[1.6]',
         // Desktop: Fixed/static expanded sidebar
         'lg:static lg:inset-auto lg:translate-x-0 lg:h-screen lg:shadow-none',
         // Mobile: Off-canvas slide-over drawer
@@ -153,7 +160,7 @@ export default function Sidebar({ isOpen, onClose }) {
       </div>
 
       {/* Navigation List */}
-      <nav className="flex-1 space-y-1.5 p-3 overflow-y-auto overflow-x-hidden">
+      <nav className="flex-1 space-y-2 p-3 overflow-y-auto overflow-x-hidden text-[15px] leading-[1.6]">
         {menuItems.map((item) => {
           const isParentActive =
             item.submenus?.some((sub) =>
@@ -170,24 +177,28 @@ export default function Sidebar({ isOpen, onClose }) {
             <div key={item.name} className="relative">
               {item.submenus ? (
                 <div>
-                  {/* Parent Menu Item */}
-                  <button
-                    type="button"
-                    onClick={() => toggleSubmenu(item.name)}
-                    aria-expanded={isItemExpanded}
+                  {/* Parent Menu Item (Link with separate chevron toggle) */}
+                  <div
                     className={clsx(
-                      'relative w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer group',
+                      'relative w-full flex items-center justify-between rounded-xl text-[15px] leading-[1.6] font-semibold transition-all duration-200 group',
                       isParentActive
-                        ? 'bg-[#8C1801] text-[#FFC107] font-semibold shadow-sm ring-1 ring-[#FFC107]/40'
+                        ? 'bg-[#8C1801] text-[#FFC107] shadow-sm ring-1 ring-[#FFC107]/40'
                         : 'text-[#FAF7F2] hover:bg-[#8C1801]/60 hover:text-white'
                     )}
                   >
                     {/* Active Left Indicator Bar */}
                     {isParentActive && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-[#FFC107] rounded-r-full shadow-md" />
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-8 bg-[#FFC107] rounded-r-full shadow-md z-10" />
                     )}
 
-                    <div className="flex items-center min-w-0">
+                    <NavLink
+                      to={item.path || item.submenus[0].path}
+                      onClick={() => {
+                        setExpandedMenus((prev) => ({ ...prev, [item.name]: true }));
+                        handleNavClick();
+                      }}
+                      className="flex items-center min-w-0 flex-1 px-3.5 py-2.5"
+                    >
                       <Icon
                         className={clsx(
                           'h-5 w-5 shrink-0 mr-3 transition-colors',
@@ -197,21 +208,30 @@ export default function Sidebar({ isOpen, onClose }) {
                         )}
                       />
                       <span className="truncate text-left">{item.name}</span>
-                    </div>
+                    </NavLink>
 
-                    {/* Submenu Dropdown Chevron */}
-                    <div className="shrink-0 transition-transform duration-200">
+                    {/* Submenu Dropdown Chevron Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleSubmenu(item.name);
+                      }}
+                      className="p-2.5 shrink-0 hover:bg-black/10 rounded-r-xl transition-transform duration-200 cursor-pointer"
+                      title={isItemExpanded ? 'Collapse submenus' : 'Expand submenus'}
+                    >
                       {isItemExpanded ? (
                         <ChevronDown className="h-4 w-4 text-[#FFC107]/90" />
                       ) : (
                         <ChevronRight className="h-4 w-4 text-stone-300" />
                       )}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
 
                   {/* Submenu Items List */}
                   {isItemExpanded && (
-                    <div className="space-y-1 py-1 pl-6 pr-1 animate-in fade-in-50 duration-200">
+                    <div className="space-y-1 py-1.5 pl-6 pr-1 animate-in fade-in-50 duration-200">
                       {item.submenus.map((sub) => {
                         const isSubActive = isPathActive(location.pathname, sub.path);
 
@@ -221,14 +241,14 @@ export default function Sidebar({ isOpen, onClose }) {
                             to={sub.path}
                             onClick={handleNavClick}
                             className={clsx(
-                              'relative block rounded-lg px-3 py-2 text-xs transition-all truncate group',
+                              'relative block rounded-lg px-3.5 py-2 text-[14px] leading-[1.6] font-medium transition-all truncate group',
                               isSubActive
-                                ? 'bg-[#863221] text-white font-bold ring-1 ring-[#FFC107]/50 shadow-xs pl-3.5'
-                                : 'text-[#FAF7F2]/80 font-medium hover:bg-[#8C1801]/60 hover:text-white'
+                                ? 'bg-[#863221] text-white font-bold ring-1 ring-[#FFC107]/50 shadow-xs pl-4'
+                                : 'text-[#FAF7F2]/85 hover:bg-[#8C1801]/60 hover:text-white'
                             )}
                           >
                             {isSubActive && (
-                              <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-3.5 bg-[#FFC107] rounded-r-full" />
+                              <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-4 bg-[#FFC107] rounded-r-full" />
                             )}
                             <span className="truncate">{sub.name}</span>
                           </NavLink>
@@ -244,15 +264,15 @@ export default function Sidebar({ isOpen, onClose }) {
                   end={item.path === '/dashboard'}
                   onClick={handleNavClick}
                   className={clsx(
-                    'relative w-full flex items-center px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer group',
+                    'relative w-full flex items-center px-3.5 py-2.5 rounded-xl text-[15px] leading-[1.6] font-semibold transition-all duration-200 cursor-pointer group',
                     isSingleActive
-                      ? 'bg-[#8C1801] text-[#FFC107] font-semibold shadow-sm ring-1 ring-[#FFC107]/40'
+                      ? 'bg-[#8C1801] text-[#FFC107] shadow-sm ring-1 ring-[#FFC107]/40'
                       : 'text-[#FAF7F2] hover:bg-[#8C1801]/60 hover:text-white'
                   )}
                 >
                   {/* Active Left Indicator Bar */}
                   {isSingleActive && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-7 bg-[#FFC107] rounded-r-full shadow-md" />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-8 bg-[#FFC107] rounded-r-full shadow-md" />
                   )}
 
                   <Icon

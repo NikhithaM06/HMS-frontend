@@ -1,19 +1,19 @@
-import { initialMembers } from '../data/membersData';
-import { initialLabelList } from '../data/labelListData';
-import { initialMembershipTypes } from '../data/membershipTypeData';
-import { initialReceiptTypes, initialParticulars } from '../data/receiptTypeData';
-import { PAYMENT_MODES, GOTHRA_MASTER } from '../data/mastersData';
-import { initialUnapprovedMembers } from '../data/unapprovedMembersData';
-import { initialStates, initialDistricts, initialTaluks } from '../data/locationData';
-import { initialPostalCodes } from '../data/postalCodeData';
-import { initialBankDetails, BANK_PAYMENT_MODE_OPTIONS } from '../data/bankDetailsData';
+import { initialMembers } from '../data/membersData.js';
+import { initialLabelList } from '../data/labelListData.js';
+import { initialMembershipTypes } from '../data/membershipTypeData.js';
+import { initialReceiptTypes, initialParticulars } from '../data/receiptTypeData.js';
+import { PAYMENT_MODES, GOTHRA_MASTER } from '../data/mastersData.js';
+import { initialUnapprovedMembers } from '../data/unapprovedMembersData.js';
+import { initialStates, initialDistricts, initialTaluks } from '../data/locationData.js';
+import { initialPostalCodes } from '../data/postalCodeData.js';
+import { initialBankDetails, BANK_PAYMENT_MODE_OPTIONS } from '../data/bankDetailsData.js';
 import {
   initialPaymentModeConfigs,
   AVAILABLE_PAYMENT_MODES,
   AVAILABLE_PAYMENT_TYPES,
   AVAILABLE_BANK_ACCOUNTS,
   formatPaymentModeLabel
-} from '../data/paymentModeData';
+} from '../data/paymentModeData.js';
 
 export {
   ORGANISATION_TYPES,
@@ -21,7 +21,7 @@ export {
   getStoredOrganisationSettings,
   saveStoredOrganisationSettings,
   getActiveOrganisationName
-} from './organisationStore';
+} from './organisationStore.js';
 
 export {
   initialBankDetails,
@@ -35,10 +35,10 @@ export {
 };
 
 const STORAGE_KEYS = {
-  RECEIPTS: 'hms_receipts_v3',
-  MEMBERS: 'hms_members_v1',
-  UNAPPROVED_MEMBERS: 'hms_unapproved_members_v2',
-  LABEL_LIST: 'hms_label_list_v1',
+  RECEIPTS: 'hms_receipts_v4',
+  MEMBERS: 'hms_members_v3',
+  UNAPPROVED_MEMBERS: 'hms_unapproved_members_v4',
+  LABEL_LIST: 'hms_label_list_v2',
   MEMBERSHIP_TYPES: 'hms_membership_types_v1',
   STATES: 'hms_states_v1',
   DISTRICTS: 'hms_districts_v1',
@@ -46,65 +46,16 @@ const STORAGE_KEYS = {
   POSTAL_CODES: 'hms_postal_codes_v1',
   RECEIPT_TYPES: 'hms_receipt_types_v2',
   PAYMENT_MODES: 'hms_payment_modes_v1',
-  GOTHRAS: 'hms_gothras_v1',
+  GOTHRAS: 'hms_gothras_v2',
   BANK_DETAILS: 'hms_bank_details_v1',
-  PAYMENT_MODE_CONFIGS: 'hms_payment_mode_configs_v4',
-  UNAPPROVED_RENEWALS: 'hms_unapproved_renewals_v2'
+  PAYMENT_MODE_CONFIGS: 'hms_payment_modes_v6',
+  UNAPPROVED_RENEWALS: 'hms_unapproved_renewals_v3'
 };
 
 // ======================================================================
-// SAMPLE DATA FOR UNAPPROVED RENEWAL PAYMENT LIST
+// UNAPPROVED RENEWAL PAYMENT STORE
 // ======================================================================
-export const initialUnapprovedRenewals = [
-  {
-    id: 'REN-12362',
-    registrationNumber: '12362',
-    name: 'SUMANTH HEGDE',
-    gender: 'Male',
-    membershipNumber: 'RECEIPT71602',
-    membershipName: 'SUMANTH HEGDE',
-    contactNumber: '9880875179',
-    membershipType: 'Poshaka',
-    amount: 1000,
-    receiptStatus: 'Pending'
-  },
-  {
-    id: 'REN-11976',
-    registrationNumber: '11976',
-    name: 'AKSHAY RAM BHAT',
-    gender: 'Male',
-    membershipNumber: '7420/PO/1000',
-    membershipName: 'UDAYANARAYAN BHAT',
-    contactNumber: '8971635160',
-    membershipType: 'Poshaka',
-    amount: 1000,
-    receiptStatus: 'Pending'
-  },
-  {
-    id: 'REN-12405',
-    registrationNumber: '12405',
-    name: 'MAHESHWARA BHAT',
-    gender: 'Male',
-    membershipNumber: '5120/PO/1000',
-    membershipName: 'MAHESHWARA BHAT',
-    contactNumber: '9448123901',
-    membershipType: 'Poshaka',
-    amount: 1000,
-    receiptStatus: 'Pending'
-  },
-  {
-    id: 'REN-12518',
-    registrationNumber: '12518',
-    name: 'RADHIKA HEGDE',
-    gender: 'Female',
-    membershipNumber: '6890/MA/2000',
-    membershipName: 'RADHIKA HEGDE',
-    contactNumber: '9740156822',
-    membershipType: 'Mahaposhaka',
-    amount: 2000,
-    receiptStatus: 'Pending'
-  }
-];
+export const initialUnapprovedRenewals = [];
 
 export const getStoredUnapprovedRenewals = () => {
   try {
@@ -116,7 +67,7 @@ export const getStoredUnapprovedRenewals = () => {
   } catch (e) {
     console.error('Failed to parse renewals from storage', e);
   }
-  return initialUnapprovedRenewals;
+  return [];
 };
 
 export const saveStoredUnapprovedRenewals = (renewals) => {
@@ -169,7 +120,23 @@ export const getStoredUnapprovedMembers = () => {
     const saved = localStorage.getItem(STORAGE_KEYS.UNAPPROVED_MEMBERS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.map((m) => {
+          const isAssigned = m.receiptStatus === 'Assigned' || Boolean(m.assignedReceiptNumber && String(m.assignedReceiptNumber).trim() !== '');
+          if (!isAssigned) {
+            return {
+              ...m,
+              receiptStatus: 'Unassigned',
+              assignedReceiptNumber: '',
+              receiptNumber: ''
+            };
+          }
+          return {
+            ...m,
+            receiptStatus: 'Assigned'
+          };
+        });
+      }
     }
   } catch (e) {
     console.error('Failed to parse unapproved members from storage', e);
@@ -185,132 +152,20 @@ export const saveStoredUnapprovedMembers = (members) => {
   }
 };
 
+export const isMemberReceiptAssigned = (member) => {
+  if (!member) return false;
+  if (member.receiptStatus === 'Assigned') return true;
+  if (member.assignedReceiptNumber && String(member.assignedReceiptNumber).trim() !== '') return true;
+  if (member.receiptNumber && String(member.receiptNumber).trim() !== '') return true;
+  const receipt = findMatchingReceiptForMember(member);
+  if (receipt && receipt.receiptNumber) return true;
+  return false;
+};
+
 // ======================================================================
 // RECEIPT STORE (FOR RECEIPT TRACKING & RECEIPT ENTRY FLOW)
-// Total 5 Dummy Receipts (3 Assigned, 2 Unassigned)
 // ======================================================================
-export const initialReceipts = [
-  {
-    id: 'REC-123',
-    receiptNumber: '123',
-    receiptDate: '2026-10-06',
-    name: 'Ananya Hegde',
-    panNo: 'ABCDE5678G',
-    membershipNo: 'MEM-2026-001',
-    memberId: 'MEM-2026-001',
-    mobile: '9876543210',
-    particulars: 'Membership',
-    othersDescription: '',
-    paymentReceivedDetails: '',
-    donationDetails: '',
-    amount: 1000,
-    paymentMode: 'Online',
-    bankAccount: 'KBL 1075',
-    bankName: 'KBL 1075',
-    transactionId: 'UPI-TXN-9912401',
-    transactionDate: '2026-10-06',
-    description: 'Annual membership contribution',
-    status: 'Assigned',
-    isUnmapped: false,
-    createdAt: '2026-10-06T10:00:00.000Z'
-  },
-  {
-    id: 'REC-124',
-    receiptNumber: '124',
-    receiptDate: '2026-10-06',
-    name: 'Nikhitha',
-    panNo: 'ABCDE1234F',
-    membershipNo: 'MEM-2026-002',
-    memberId: 'MEM-2026-002',
-    mobile: '9880875179',
-    particulars: 'Donation',
-    othersDescription: '',
-    paymentReceivedDetails: '',
-    donationDetails: 'Building Fund',
-    amount: 5000,
-    paymentMode: 'Online',
-    bankAccount: 'KBL 1075',
-    bankName: 'KBL 1075',
-    transactionId: 'UPI-TXN-8849102',
-    transactionDate: '2026-10-06',
-    description: 'Building fund donation',
-    status: 'Assigned',
-    isUnmapped: false,
-    createdAt: '2026-10-06T11:30:00.000Z'
-  },
-  {
-    id: 'REC-125',
-    receiptNumber: '125',
-    receiptDate: '2026-10-07',
-    name: '',
-    panNo: '',
-    membershipNo: '',
-    memberId: null,
-    mobile: '',
-    particulars: 'Membership',
-    othersDescription: '',
-    paymentReceivedDetails: '',
-    donationDetails: '',
-    amount: 1000,
-    paymentMode: 'Cash',
-    bankAccount: '',
-    bankName: '',
-    transactionId: '',
-    transactionDate: '',
-    description: 'Counter cash collection — Unassigned offline receipt',
-    status: 'Unassigned',
-    isUnmapped: true,
-    createdAt: '2026-10-07T09:15:00.000Z'
-  },
-  {
-    id: 'REC-126',
-    receiptNumber: '126',
-    receiptDate: '2026-10-07',
-    name: 'Ramesh Bhat',
-    panNo: 'FGHIJ9012K',
-    membershipNo: 'MEM-2026-003',
-    memberId: 'MEM-2026-003',
-    mobile: '9448123901',
-    particulars: 'Membership',
-    othersDescription: '',
-    paymentReceivedDetails: '',
-    donationDetails: '',
-    amount: 1000,
-    paymentMode: 'Offline',
-    bankAccount: 'SBI',
-    bankName: 'State Bank of India',
-    transactionId: 'CHQ-448102',
-    transactionDate: '2026-10-07',
-    description: 'Offline membership payment cheque',
-    status: 'Assigned',
-    isUnmapped: false,
-    createdAt: '2026-10-07T10:00:00.000Z'
-  },
-  {
-    id: 'REC-127',
-    receiptNumber: '127',
-    receiptDate: '2026-10-07',
-    name: '',
-    panNo: '',
-    membershipNo: '',
-    memberId: null,
-    mobile: '',
-    particulars: 'Scholarship',
-    othersDescription: '',
-    paymentReceivedDetails: '',
-    donationDetails: '',
-    amount: 2500,
-    paymentMode: 'Cash',
-    bankAccount: '',
-    bankName: '',
-    transactionId: '',
-    transactionDate: '',
-    description: 'Direct endowment contribution — Unassigned',
-    status: 'Unassigned',
-    isUnmapped: true,
-    createdAt: '2026-10-07T10:45:00.000Z'
-  }
-];
+export const initialReceipts = [];
 
 export const isReceiptUnmapped = (receipt) => {
   if (!receipt) return false;
@@ -331,12 +186,73 @@ export const getStoredReceipts = () => {
     const saved = localStorage.getItem(STORAGE_KEYS.RECEIPTS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        // Strict exclusion: NEVER allow receipts of unapproved or assigned members into Receipt Tracking
+        const unapproved = getStoredUnapprovedMembers();
+        const unapprovedIds = new Set(unapproved.map((u) => String(u.id || '').toLowerCase()));
+        const unapprovedRegs = new Set(unapproved.map((u) => String(u.registrationNumber || '').toLowerCase()));
+        const unapprovedReceiptNos = new Set();
+        const unapprovedMobiles = new Set();
+        const unapprovedNames = new Set();
+
+        unapproved.forEach((u) => {
+          if (u.assignedReceiptNumber) {
+            unapprovedReceiptNos.add(String(u.assignedReceiptNumber).toLowerCase().replace(/^#/, ''));
+          }
+          if (u.receiptNumber) {
+            unapprovedReceiptNos.add(String(u.receiptNumber).toLowerCase().replace(/^#/, ''));
+          }
+          const mob = String(u.mobile || u.mobileNumber || u.contactNumber || u.phone || '').trim().replace(/\D/g, '');
+          if (mob && mob.length >= 10) {
+            unapprovedMobiles.add(mob.slice(-10));
+          }
+          const name = String(u.fullName || u.name || '').trim().toLowerCase();
+          if (name) {
+            unapprovedNames.add(name);
+          }
+        });
+
+        return parsed.filter((r) => {
+          // Exclude assigned receipts
+          if (r.status === 'Assigned' || r.receiptStatus === 'Assigned' || r.mappingStatus === 'Assigned') return false;
+
+          // Exclude by unapproved member ID or reg
+          if (r.memberId && unapprovedIds.has(String(r.memberId).toLowerCase())) return false;
+          if (r.registrationNumber && unapprovedRegs.has(String(r.registrationNumber).toLowerCase())) return false;
+
+          // Exclude by receipt number
+          const rNum = String(r.receiptNumber || '').toLowerCase().replace(/^#/, '');
+          if (rNum && unapprovedReceiptNos.has(rNum)) return false;
+
+          // Exclude by mobile matching an unapproved member with assigned receipt
+          const rMob = String(r.mobile || '').trim().replace(/\D/g, '');
+          if (rMob && rMob.length >= 10 && unapprovedMobiles.has(rMob.slice(-10))) {
+            const memberWithMob = unapproved.find((u) => {
+              const uMob = String(u.mobile || u.mobileNumber || u.contactNumber || '').trim().replace(/\D/g, '');
+              return uMob.slice(-10) === rMob.slice(-10);
+            });
+            if (memberWithMob && (memberWithMob.assignedReceiptNumber || memberWithMob.receiptStatus === 'Assigned')) {
+              return false;
+            }
+          }
+
+          // Exclude by name matching an unapproved member with assigned receipt
+          const rName = String(r.name || '').trim().toLowerCase();
+          if (rName && unapprovedNames.has(rName)) {
+            const memberWithName = unapproved.find((u) => String(u.fullName || u.name || '').trim().toLowerCase() === rName);
+            if (memberWithName && (memberWithName.assignedReceiptNumber || memberWithName.receiptStatus === 'Assigned')) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+      }
     }
   } catch (e) {
     console.error('Failed to parse receipts from storage', e);
   }
-  return initialReceipts;
+  return [];
 };
 
 export const saveStoredReceipts = (receipts) => {
@@ -347,19 +263,126 @@ export const saveStoredReceipts = (receipts) => {
   }
 };
 
-export const saveNewReceipt = (receiptData) => {
-  const receipts = getStoredReceipts();
-  const today = new Date().toISOString().split('T')[0];
-  const newReceiptId = `REC-${Date.now()}`;
+export const findMatchingReceiptForMember = (member, customReceipts = null) => {
+  if (!member) return null;
+  const receipts = customReceipts || getStoredReceipts();
 
+  const memId = String(member.id || '').trim().toLowerCase();
+  const regNo = String(member.registrationNumber || '').trim().toLowerCase();
+  const memNo = String(member.membershipNumber || '').trim().toLowerCase();
+  const mob = String(member.mobile || member.mobileNumber || member.contactNumber || member.phone || '').trim().replace(/\D/g, '');
+  const name = String(member.fullName || member.name || '').trim().toLowerCase();
+  const receiptNum = String(member.assignedReceiptNumber || member.receiptNumber || '').trim().toLowerCase();
+
+  // 1. Match by explicit receiptNumber
+  if (receiptNum) {
+    const byNum = receipts.find((r) => String(r.receiptNumber || '').trim().toLowerCase() === receiptNum);
+    if (byNum) return byNum;
+  }
+
+  // 2. Match by memberId
+  if (memId) {
+    const byId = receipts.find((r) => r.memberId && String(r.memberId).trim().toLowerCase() === memId);
+    if (byId) return byId;
+  }
+
+  // 3. Match by registrationNumber or membershipNo
+  if (regNo || memNo) {
+    const byReg = receipts.find((r) => {
+      const rMemNo = String(r.membershipNo || '').trim().toLowerCase();
+      const rRegNo = String(r.registrationNumber || '').trim().toLowerCase();
+      return (regNo && (rRegNo === regNo || rMemNo === regNo)) || (memNo && rMemNo === memNo);
+    });
+    if (byReg) return byReg;
+  }
+
+  // 4. Match by 10-digit mobile number
+  if (mob && mob.length >= 10) {
+    const last10 = mob.slice(-10);
+    const byMob = receipts.find((r) => {
+      const rMob = String(r.mobile || '').trim().replace(/\D/g, '');
+      return rMob && rMob.slice(-10) === last10;
+    });
+    if (byMob) return byMob;
+  }
+
+  // 5. Match by exact payee name (if name length > 3)
+  if (name && name.length > 3) {
+    const byName = receipts.find((r) => {
+      const rName = String(r.name || '').trim().toLowerCase();
+      return rName && rName === name;
+    });
+    if (byName) return byName;
+  }
+
+  return null;
+};
+
+export const saveNewReceipt = (receiptData) => {
+  const rawSaved = localStorage.getItem(STORAGE_KEYS.RECEIPTS);
+  let allStoredReceipts = [];
+  try {
+    allStoredReceipts = rawSaved ? JSON.parse(rawSaved) : [];
+    if (!Array.isArray(allStoredReceipts)) allStoredReceipts = [];
+  } catch (_) {
+    allStoredReceipts = [];
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const targetReceiptNo = String(receiptData.receiptNumber || '').trim().replace(/^#/, '');
+  const unapprovedMembers = getStoredUnapprovedMembers();
+  const registeredMembers = getStoredMembers();
+
+  // Distinguish flow strictly: Assignment Flow vs Normal Standalone Receipt
+  const isAssignmentFlow = Boolean(
+    receiptData.isAssignmentFlow ||
+    (receiptData.memberId && (receiptData.status === 'Assigned' || receiptData.receiptStatus === 'Assigned'))
+  );
+
+  let matchedUnapproved = null;
+  if (isAssignmentFlow) {
+    if (receiptData.memberId) {
+      const cleanId = String(receiptData.memberId).trim().toLowerCase();
+      matchedUnapproved = unapprovedMembers.find((u) => u.id && String(u.id).trim().toLowerCase() === cleanId);
+    }
+    if (!matchedUnapproved && receiptData.registrationNumber) {
+      const cleanReg = String(receiptData.registrationNumber).trim().toLowerCase();
+      matchedUnapproved = unapprovedMembers.find((u) => u.registrationNumber && String(u.registrationNumber).trim().toLowerCase() === cleanReg);
+    }
+    if (!matchedUnapproved && receiptData.membershipNo) {
+      const cleanMemNo = String(receiptData.membershipNo).trim().toLowerCase();
+      matchedUnapproved = unapprovedMembers.find((u) => (u.membershipNumber && String(u.membershipNumber).trim().toLowerCase() === cleanMemNo) || (u.id && String(u.id).trim().toLowerCase() === cleanMemNo));
+    }
+  }
+
+  let matchedRegistered = null;
+  if (isAssignmentFlow) {
+    if (receiptData.memberId) {
+      const cleanId = String(receiptData.memberId).trim().toLowerCase();
+      matchedRegistered = registeredMembers.find((m) => m.id && String(m.id).trim().toLowerCase() === cleanId);
+    }
+    if (!matchedRegistered && receiptData.membershipNo) {
+      const cleanMemNo = String(receiptData.membershipNo).trim().toLowerCase();
+      matchedRegistered = registeredMembers.find((m) => m.membershipNumber && String(m.membershipNumber).trim().toLowerCase() === cleanMemNo);
+    }
+  }
+
+  const targetMemberObj = matchedUnapproved || matchedRegistered;
+  const targetMemberId = receiptData.memberId || (targetMemberObj ? targetMemberObj.id : null);
+  const targetMemberName = receiptData.name || (targetMemberObj ? (targetMemberObj.fullName || targetMemberObj.name) : '');
+  const targetMemberNo = receiptData.membershipNo || (targetMemberObj ? (targetMemberObj.membershipNumber || targetMemberObj.registrationNumber || targetMemberObj.id) : '');
+  const targetRegNo = receiptData.registrationNumber || (targetMemberObj ? (targetMemberObj.registrationNumber || targetMemberObj.id) : '');
+
+  const newReceiptId = `REC-${Date.now()}`;
   const newReceipt = {
     id: newReceiptId,
-    receiptNumber: String(receiptData.receiptNumber || '').trim(),
+    receiptNumber: targetReceiptNo,
     receiptDate: receiptData.receiptDate || today,
-    name: String(receiptData.name || '').trim(),
-    panNo: String(receiptData.panNo || '').trim(),
-    membershipNo: String(receiptData.membershipNo || '').trim(),
-    mobile: String(receiptData.mobile || '').trim(),
+    name: String(targetMemberName || receiptData.name || '').trim(),
+    panNo: String(receiptData.panNo || (targetMemberObj ? targetMemberObj.panNo : '') || '').trim(),
+    membershipNo: String(targetMemberNo || '').trim(),
+    registrationNumber: String(targetRegNo || (matchedUnapproved ? matchedUnapproved.registrationNumber : '')).trim(),
+    mobile: String(receiptData.mobile || (targetMemberObj ? (targetMemberObj.mobile || targetMemberObj.contactNumber || targetMemberObj.phone) : '') || '').trim(),
     particulars: receiptData.particulars || 'Membership',
     donationSubType: receiptData.donationSubType || '',
     othersDescription: receiptData.othersDescription || '',
@@ -372,35 +395,119 @@ export const saveNewReceipt = (receiptData) => {
     transactionId: String(receiptData.transactionId || '').trim(),
     transactionDate: receiptData.transactionDate || '',
     description: String(receiptData.description || '').trim(),
-    memberId: receiptData.memberId || null,
-    membershipType: receiptData.membershipType || '',
-    status: 'Assigned',
-    mappingStatus: receiptData.mappingStatus || 'Unmapped', // Explicitly Unmapped by default
+    memberId: isAssignmentFlow ? (targetMemberId || null) : null,
+    membershipType: receiptData.membershipType || (targetMemberObj ? (targetMemberObj.membershipType || targetMemberObj.membershipTypeCategory) : ''),
+    status: isAssignmentFlow ? 'Assigned' : 'Active',
+    receiptStatus: isAssignmentFlow ? 'Assigned' : 'Active',
+    mappingStatus: isAssignmentFlow ? 'Assigned' : 'Unmapped',
+    linkedAt: isAssignmentFlow ? new Date().toISOString() : null,
     createdAt: new Date().toISOString()
   };
 
-  const updatedReceipts = [newReceipt, ...receipts];
-  saveStoredReceipts(updatedReceipts);
-
-  // If associated with an unapproved member, update member's receiptStatus to 'Assigned'
-  if (receiptData.memberId) {
-    const unapprovedMembers = getStoredUnapprovedMembers();
+  if (isAssignmentFlow) {
+    // 1. Update ONLY the single targeted unapproved member record
     const updatedUnapproved = unapprovedMembers.map((m) => {
-      if (m.id === receiptData.memberId) {
+      const isTarget = Boolean(
+        (targetMemberId && m.id && String(m.id).trim().toLowerCase() === String(targetMemberId).trim().toLowerCase()) ||
+        (matchedUnapproved && m.id && String(m.id).trim().toLowerCase() === String(matchedUnapproved.id).trim().toLowerCase())
+      );
+
+      if (isTarget) {
+        const existingHistory = Array.isArray(m.receiptsHistory) ? m.receiptsHistory : [];
+        const filteredHistory = existingHistory.filter((r) => r.id !== newReceipt.id && r.receiptNumber !== newReceipt.receiptNumber);
+        const updatedHistory = [...filteredHistory, newReceipt];
+
         return {
           ...m,
           receiptStatus: 'Assigned',
+          status: 'Unapproved',
+          approvalStatus: 'Unapproved',
           assignedReceiptNumber: newReceipt.receiptNumber,
+          receiptNumber: newReceipt.receiptNumber,
           receiptId: newReceipt.id,
           receiptDate: newReceipt.receiptDate,
-          // Explicitly keep unapproved and unmapped
-          approvalStatus: 'Unapproved',
-          mappingStatus: 'Unmapped'
+          panNo: newReceipt.panNo || m.panNo || '',
+          amount: newReceipt.amount,
+          paidAmount: newReceipt.amount,
+          paymentMode: newReceipt.paymentMode,
+          bankAccount: newReceipt.bankAccount || newReceipt.bankName || m.bankAccount || '',
+          bankName: newReceipt.bankName || newReceipt.bankAccount || m.bankName || '',
+          transactionId: newReceipt.transactionId || m.transactionId || '',
+          transactionDate: newReceipt.transactionDate || m.transactionDate || '',
+          paymentRemarks: newReceipt.description || newReceipt.paymentReceivedDetails || m.paymentRemarks || '',
+          hasReceiptAssigned: true,
+          mappingStatus: 'Assigned',
+          latestReceipt: newReceipt,
+          receiptsHistory: updatedHistory,
+          paymentHistory: updatedHistory
         };
       }
       return m;
     });
     saveStoredUnapprovedMembers(updatedUnapproved);
+
+    // 2. Also update registered members store ONLY if this targeted member was in registered members
+    if (registeredMembers.length > 0 && (targetMemberId || matchedRegistered)) {
+      const updatedRegistered = registeredMembers.map((m) => {
+        const isTarget = Boolean(
+          (targetMemberId && m.id && String(m.id).trim().toLowerCase() === String(targetMemberId).trim().toLowerCase()) ||
+          (matchedRegistered && m.id && String(m.id).trim().toLowerCase() === String(matchedRegistered.id).trim().toLowerCase())
+        );
+
+        if (isTarget) {
+          const existingHistory = Array.isArray(m.receiptsHistory) ? m.receiptsHistory : [];
+          const filteredHistory = existingHistory.filter((r) => r.id !== newReceipt.id && r.receiptNumber !== newReceipt.receiptNumber);
+          const updatedHistory = [...filteredHistory, newReceipt];
+
+          return {
+            ...m,
+            assignedReceiptNumber: newReceipt.receiptNumber,
+            receiptNumber: newReceipt.receiptNumber,
+            receiptId: newReceipt.id,
+            receiptDate: newReceipt.receiptDate,
+            panNo: newReceipt.panNo || m.panNo || '',
+            amount: newReceipt.amount,
+            paidAmount: (Number(m.paidAmount || 0) + Number(newReceipt.amount)),
+            paymentMode: newReceipt.paymentMode,
+            bankAccount: newReceipt.bankAccount || newReceipt.bankName || m.bankAccount || '',
+            bankName: newReceipt.bankName || newReceipt.bankAccount || m.bankName || '',
+            transactionId: newReceipt.transactionId || m.transactionId || '',
+            transactionDate: newReceipt.transactionDate || m.transactionDate || '',
+            paymentRemarks: newReceipt.description || newReceipt.paymentReceivedDetails || m.paymentRemarks || '',
+            hasReceiptAssigned: true,
+            receiptStatus: 'Assigned',
+            latestReceipt: newReceipt,
+            receiptsHistory: updatedHistory,
+            paymentHistory: updatedHistory
+          };
+        }
+        return m;
+      });
+      saveStoredMembers(updatedRegistered);
+    }
+
+    // 3. ABSOLUTELY PURGE/REMOVE from Receipt Tracking storage (STORAGE_KEYS.RECEIPTS)
+    const filteredReceipts = allStoredReceipts.filter((r) => {
+      const rNum = String(r.receiptNumber || '').toLowerCase().replace(/^#/, '');
+      if (rNum === targetReceiptNo.toLowerCase()) return false;
+      if (targetMemberId && r.memberId && String(r.memberId).toLowerCase() === String(targetMemberId).toLowerCase()) return false;
+      if (r.status === 'Assigned' || r.receiptStatus === 'Assigned') return false;
+      return true;
+    });
+    saveStoredReceipts(filteredReceipts);
+  } else {
+    // Standalone receipt (not assigned to an unapproved member) -> saved into Receipt Tracking
+    const existingIndex = allStoredReceipts.findIndex(
+      (r) => String(r.receiptNumber || '').trim().toLowerCase().replace(/^#/, '') === targetReceiptNo.toLowerCase()
+    );
+
+    if (existingIndex >= 0) {
+      const updatedReceipts = [...allStoredReceipts];
+      updatedReceipts[existingIndex] = { ...allStoredReceipts[existingIndex], ...newReceipt };
+      saveStoredReceipts(updatedReceipts);
+    } else {
+      saveStoredReceipts([newReceipt, ...allStoredReceipts]);
+    }
   }
 
   return newReceipt;
@@ -531,7 +638,10 @@ export const mapReceiptToMember = (receiptId, member) => {
 export const getStoredMembers = () => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
   } catch (e) {
     console.error('Failed to parse members from storage', e);
   }
@@ -552,11 +662,14 @@ export const saveStoredMembers = (members) => {
 export const getStoredLabelList = () => {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.LABEL_LIST);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
   } catch (e) {
     console.error('Failed to parse label list from storage', e);
   }
-  return initialLabelList;
+  return [];
 };
 
 export const saveStoredLabelList = (list) => {
@@ -721,7 +834,7 @@ export const calculateMemberMembershipStatus = (
     }))
     .sort((a, b) => a.milestonePrice - b.milestonePrice);
 
-  let currentMembershipType = 'None';
+  let currentMembershipType = (typeof memberOrIdentifier === 'object' && memberOrIdentifier && (memberOrIdentifier.membershipType || memberOrIdentifier.type)) || 'Poshaka';
   let currentMilestoneAmount = 0;
   let nextMilestoneType = null;
   let nextMilestoneAmount = null;
@@ -750,12 +863,19 @@ export const calculateMemberMembershipStatus = (
         remainingAmount = 0;
       }
     } else {
-      // Below the lowest configured milestone
-      currentMembershipType = 'None';
+      // Below the lowest configured milestone - fallback to assigned member type if present, or Poshaka
+      const assignedType = (typeof memberOrIdentifier === 'object' && memberOrIdentifier)
+        ? (memberOrIdentifier.membershipType || memberOrIdentifier.type)
+        : null;
+
+      currentMembershipType = assignedType && assignedType !== 'None' && assignedType !== 'Not Yet Reached'
+        ? assignedType
+        : 'Poshaka';
+
       const lowestType = activeTypes[0];
-      nextMilestoneType = lowestType.name;
-      nextMilestoneAmount = lowestType.milestonePrice;
-      remainingAmount = Math.max(0, nextMilestoneAmount - totalMembershipPaid);
+      nextMilestoneType = lowestType?.name || null;
+      nextMilestoneAmount = lowestType?.milestonePrice || null;
+      remainingAmount = Math.max(0, (nextMilestoneAmount || 0) - totalMembershipPaid);
     }
   }
 
@@ -811,7 +931,21 @@ export const getStoredDistricts = () => {
     const saved = localStorage.getItem(STORAGE_KEYS.DISTRICTS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Ensure all baseline districts are present
+        const existingNames = new Set(parsed.map((d) => (d.name || '').toLowerCase().trim()));
+        const missing = initialDistricts.filter(
+          (d) => !existingNames.has((d.name || '').toLowerCase().trim())
+        );
+        if (missing.length > 0) {
+          const merged = [...parsed, ...missing];
+          try {
+            localStorage.setItem(STORAGE_KEYS.DISTRICTS, JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to parse districts from storage', e);
@@ -832,7 +966,23 @@ export const getStoredTaluks = () => {
     const saved = localStorage.getItem(STORAGE_KEYS.TALUKS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Ensure all baseline taluks are present
+        const existingKeys = new Set(
+          parsed.map((t) => (t.name || '').toLowerCase().trim() + '_' + (t.districtId || ''))
+        );
+        const missing = initialTaluks.filter(
+          (t) => !existingKeys.has((t.name || '').toLowerCase().trim() + '_' + (t.districtId || ''))
+        );
+        if (missing.length > 0) {
+          const merged = [...parsed, ...missing];
+          try {
+            localStorage.setItem(STORAGE_KEYS.TALUKS, JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        }
+        return parsed;
+      }
     }
   } catch (e) {
     console.error('Failed to parse taluks from storage', e);
@@ -855,9 +1005,11 @@ export const getStoredPostalCodes = () => {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Ensure any new baseline postal directory records are available
-        const existingKeys = new Set(parsed.map((p) => p.postalCode + '_' + (p.area || '')));
+        const existingKeys = new Set(
+          parsed.map((p) => String(p.postalCode || '').trim() + '_' + (p.area || '').toLowerCase().trim())
+        );
         const missing = initialPostalCodes.filter(
-          (p) => !existingKeys.has(p.postalCode + '_' + (p.area || ''))
+          (p) => !existingKeys.has(String(p.postalCode || '').trim() + '_' + (p.area || '').toLowerCase().trim())
         );
         if (missing.length > 0) {
           const merged = [...parsed, ...missing];
@@ -915,6 +1067,49 @@ export const lookupLocationByPin = (pinCode) => {
     allAreas: matches.map((m) => m.area),
     matches
   };
+};
+
+export const searchPostalLocations = (query, limit = 25) => {
+  if (!query || typeof query !== 'string') return [];
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const allPostalCodes = getStoredPostalCodes();
+  const activeItems = allPostalCodes.filter(
+    (item) => !item.status || item.status === 'Active' || item.status === 'Mapped'
+  );
+
+  const results = [];
+  for (const item of activeItems) {
+    const pin = String(item.postalCode || '').toLowerCase();
+    const area = String(item.area || '').toLowerCase();
+    const taluk = String(item.talukName || '').toLowerCase();
+    const dist = String(item.districtName || '').toLowerCase();
+
+    let score = 0;
+    if (pin === q) {
+      score = 200;
+    } else if (pin.startsWith(q)) {
+      score = 150 - (pin.length - q.length);
+    } else if (pin.includes(q)) {
+      score = 80;
+    } else if (area.startsWith(q)) {
+      score = 120;
+    } else if (area.includes(q)) {
+      score = 70;
+    } else if (taluk.startsWith(q)) {
+      score = 60;
+    } else if (taluk.includes(q) || dist.includes(q)) {
+      score = 40;
+    }
+
+    if (score > 0) {
+      results.push({ item, score });
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit).map((r) => r.item);
 };
 
 export const getStoredParticulars = () => {
@@ -1045,17 +1240,15 @@ export const getStoredPaymentModeConfigs = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure baseline configs exist
+        // Ensure initial payment modes exist
         const existingKeys = new Set(
-          parsed.map((c) =>
-            `${(c.paymentMode || '').trim().toLowerCase()}_${(c.bankAccount || '').trim().toLowerCase()}`
-          )
+          parsed.map((c) => (c.paymentMode || '').trim().toLowerCase())
         );
         let hasChanges = false;
         const merged = [...parsed];
 
         initialPaymentModeConfigs.forEach((initCfg) => {
-          const key = `${(initCfg.paymentMode || '').trim().toLowerCase()}_${(initCfg.bankAccount || '').trim().toLowerCase()}`;
+          const key = (initCfg.paymentMode || '').trim().toLowerCase();
           if (!existingKeys.has(key)) {
             merged.push(initCfg);
             hasChanges = true;
@@ -1079,6 +1272,9 @@ export const getStoredPaymentModeConfigs = () => {
 export const saveStoredPaymentModeConfigs = (configs) => {
   try {
     localStorage.setItem(STORAGE_KEYS.PAYMENT_MODE_CONFIGS, JSON.stringify(configs));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('hms_payment_modes_updated'));
+    }
   } catch (e) {
     console.error('Failed to save payment mode configs to storage', e);
   }
@@ -1092,33 +1288,22 @@ export const getActivePaymentModeConfigs = () => {
 export const getActivePaymentModes = () => {
   const activeConfigs = getActivePaymentModeConfigs();
   if (activeConfigs.length === 0) {
-    return initialPaymentModeConfigs.map(formatPaymentModeLabel);
+    return initialPaymentModeConfigs.map((c) => c.paymentMode);
   }
-  return activeConfigs.map(formatPaymentModeLabel);
+  return activeConfigs.map((c) => c.paymentMode);
 };
 
 export const getAllPaymentModes = () => {
   const allConfigs = getStoredPaymentModeConfigs();
-  return allConfigs.map(formatPaymentModeLabel);
+  return allConfigs.map((c) => c.paymentMode);
 };
 
 export const isPaymentModeOffline = (paymentModeLabel) => {
   if (!paymentModeLabel) return false;
   const str = String(paymentModeLabel).trim().toLowerCase();
-  if (str === 'cash' || str.startsWith('cash') || str.startsWith('cheque') || str.startsWith('dd')) {
-    return true;
-  }
-  const allConfigs = getStoredPaymentModeConfigs();
-  const matched = allConfigs.find(
-    (c) =>
-      formatPaymentModeLabel(c).toLowerCase() === str ||
-      (c.paymentMode || '').toLowerCase() === str
-  );
-  if (matched) {
-    return (matched.paymentType || 'Offline') === 'Offline';
-  }
-  return false;
+  return str === 'cash' || str.startsWith('cash') || str.startsWith('cheque') || str.startsWith('dd');
 };
+
 
 // Legacy Bank Details Fallbacks for backward compatibility
 export const getStoredBankDetails = () => {
@@ -1148,5 +1333,17 @@ export const getActiveBankDetails = () => {
   const allBanks = getStoredBankDetails();
   return allBanks.filter((bank) => (bank.status || 'Active') === 'Active');
 };
+
+// Re-export Financial Year Configuration & Utilities
+export {
+  getFinancialYear,
+  getCurrentFinancialYear,
+  getFinancialYearRange,
+  getFinancialYearOptions,
+  isDateInFinancialYear,
+  getStoredActiveFinancialYear,
+  saveStoredActiveFinancialYear
+} from './financialYear';
+
 
 

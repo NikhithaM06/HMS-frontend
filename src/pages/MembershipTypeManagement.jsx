@@ -28,6 +28,8 @@ import {
   getStoredMembershipTypes,
   saveStoredMembershipTypes
 } from '../utils/receiptStore';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
+import DateInput from '../components/DateInput';
 
 // Helper to format currency in Indian Rupee format
 const formatINR = (amount) => {
@@ -36,16 +38,6 @@ const formatINR = (amount) => {
     currency: 'INR',
     maximumFractionDigits: 0
   }).format(amount || 0);
-};
-
-// Helper to format date string (YYYY-MM-DD to DD-MM-YYYY or readable string)
-const formatDate = (dateStr) => {
-  if (!dateStr || dateStr === 'Present') return dateStr;
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-  return dateStr;
 };
 
 export default function MembershipTypeManagement() {
@@ -1073,8 +1065,7 @@ export default function MembershipTypeManagement() {
                 <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
                   Effective From <span className="text-[#ED4636]">*</span>
                 </label>
-                <input
-                  type="date"
+                <DateInput
                   name="effectiveFrom"
                   value={priceFormData.effectiveFrom}
                   onChange={handlePriceFormChange}

@@ -27,7 +27,6 @@ import {
   ChevronRight,
   ChevronLeft,
   ShieldAlert,
-  Sparkles,
   ArrowRight
 } from 'lucide-react';
 import {
@@ -37,8 +36,13 @@ import {
   saveStoredMembers,
   getStoredMembershipTypes,
   getStoredStates,
-  getStoredDistricts
+  getStoredDistricts,
+  lookupLocationByPin,
+  getStoredReceipts,
+  findMatchingReceiptForMember,
+  isMemberReceiptAssigned
 } from '../utils/receiptStore';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 export default function UnapprovedMembership() {
   const navigate = useNavigate();
@@ -52,7 +56,16 @@ export default function UnapprovedMembership() {
   const [districts] = useState(getStoredDistricts());
 
   useEffect(() => {
-    setUnapprovedMembers(getStoredUnapprovedMembers());
+    const handleUpdate = () => {
+      setUnapprovedMembers(getStoredUnapprovedMembers());
+    };
+    handleUpdate();
+    window.addEventListener('storage', handleUpdate);
+    window.addEventListener('hms_unapproved_members_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('storage', handleUpdate);
+      window.removeEventListener('hms_unapproved_members_updated', handleUpdate);
+    };
   }, []);
 
   const persistUnapproved = (updated) => {
@@ -87,14 +100,15 @@ export default function UnapprovedMembership() {
   // ----------------------------------------------------
   // MODAL STATES
   // ----------------------------------------------------
-  // 1. View Details Modal
+  // 1. View Profile Popup Modal
   const [viewingMember, setViewingMember] = useState(null);
 
-  // 2. Approve Confirmation Modal
-  const [approveDialog, setApproveDialog] = useState(null); // Member object to approve
-
-  // 3. Receipt Validation Block Alert Modal
-  const [validationBlockDialog, setValidationBlockDialog] = useState(null); // Member object blocked
+  // Dynamic receipt lookup for Viewing Member to ensure real saved receipt data is always displayed
+  const viewingReceiptData = useMemo(() => {
+    if (!viewingMember) return null;
+    const allReceipts = getStoredReceipts();
+    return findMatchingReceiptForMember(viewingMember, allReceipts);
+  }, [viewingMember]);
 
   // Districts for dropdown filter
   const filterDistricts = useMemo(() => {
@@ -146,7 +160,9 @@ export default function UnapprovedMembership() {
 
       // Receipt Status Filter
       if (receiptStatusFilter !== 'ALL') {
-        if ((m.receiptStatus || 'Pending') !== receiptStatusFilter) return false;
+        const isAssigned = isMemberReceiptAssigned(m);
+        const currentStatus = isAssigned ? 'Assigned' : 'Unassigned';
+        if (currentStatus !== receiptStatusFilter) return false;
       }
 
       return true;
@@ -202,113 +218,13 @@ export default function UnapprovedMembership() {
     setCurrentPage(1);
   };
 
-  // ----------------------------------------------------
-  // SIMULATION HANDLER: TOGGLE RECEIPT STATUS
-  // (Provides easy testing for receipt module connectivity)
-  // ----------------------------------------------------
-  const handleToggleReceiptMappingSimulation = (memberId) => {
-    const updated = unapprovedMembers.map((m) => {
-      if (m.id === memberId) {
-        const isAssigned = m.receiptStatus === 'Assigned';
-        const nextReceiptStatus = isAssigned ? 'Pending' : 'Assigned';
-        const nextReceiptNo = isAssigned ? '' : `REC-${Math.floor(1000 + Math.random() * 9000)}`;
-
-        return {
-          ...m,
-          receiptStatus: nextReceiptStatus,
-          assignedReceiptNumber: nextReceiptNo
-        };
-      }
-      return m;
-    });
-
-    persistUnapproved(updated);
-
-    const target = updated.find((m) => m.id === memberId);
-    if (target?.receiptStatus === 'Assigned') {
-      showToast(
-        `Receipt assigned for ${target.fullName} (${target.assignedReceiptNumber}). Ready for approval!`,
-        'success'
-      );
-    } else {
-      showToast(`Receipt status reset to Pending for ${target?.fullName}.`, 'info');
-    }
-
-    if (viewingMember && viewingMember.id === memberId) {
-      setViewingMember(target);
-    }
-  };
-
-  // ----------------------------------------------------
-  // APPROVAL TRIGGER & VALIDATION
-  // ----------------------------------------------------
-  const handleInitiateApprove = (member) => {
-    // 1. RECEIPT VALIDATION: Must have Receipt Status = Assigned
-    const isReceiptAssigned = member.receiptStatus === 'Assigned';
-
-    if (!isReceiptAssigned) {
-      // BLOCK APPROVAL with required message
-      setValidationBlockDialog(member);
-      return;
-    }
-
-    // 2. Open Approval Confirmation Dialog
-    setApproveDialog(member);
-  };
-
-  const handleConfirmApproval = () => {
-    if (!approveDialog) return;
-    const memberToApprove = approveDialog;
-
-    // Load existing approved members
-    const existingMembers = getStoredMembers();
-
-    // Generate next sequential permanent membership number
-    const maxNum = existingMembers.reduce((max, m) => {
-      const num = parseInt(m.membershipNumber, 10);
-      return !isNaN(num) && num > max ? num : max;
-    }, 110);
-    const nextMembershipNumber = (maxNum + 1).toString();
-
-    // Construct approved member record preserving all existing data
-    const approvedMemberRecord = {
-      ...memberToApprove,
-      membershipNumber: nextMembershipNumber,
-      approvalStatus: 'Approved',
-      status: 'Active',
-      createdDate: memberToApprove.registrationDate || new Date().toISOString().split('T')[0],
-      approvedDate: new Date().toISOString().split('T')[0],
-      assignedReceiptNumber: memberToApprove.assignedReceiptNumber || 'REC-ONLINE'
-    };
-
-    // 1. Add to existing permanent Membership List
-    const updatedApprovedMembers = [approvedMemberRecord, ...existingMembers];
-    saveStoredMembers(updatedApprovedMembers);
-
-    // 2. Remove from Unapproved Membership List
-    const updatedUnapprovedList = unapprovedMembers.filter((m) => m.id !== memberToApprove.id);
-    persistUnapproved(updatedUnapprovedList);
-
-    // 3. Remove from selections
-    if (selectedIds.has(memberToApprove.id)) {
-      const next = new Set(selectedIds);
-      next.delete(memberToApprove.id);
-      setSelectedIds(next);
-    }
-
-    showToast(
-      `Membership for ${approvedMemberRecord.fullName} approved successfully! Moved to Membership List (#${approvedMemberRecord.membershipNumber}).`,
-      'success'
-    );
-
-    setApproveDialog(null);
-    if (viewingMember) setViewingMember(null);
-  };
-
   // Metric counts
-  const countTotal = unapprovedMembers.length;
-  const countPendingReceipt = unapprovedMembers.filter((m) => m.receiptStatus === 'Pending').length;
-  const countAssigned = unapprovedMembers.filter((m) => m.receiptStatus === 'Assigned').length;
+  const countOnline = unapprovedMembers.filter(
+    (m) => (m.registrationSource || m.registrationType || 'Online').toLowerCase() === 'online'
+  ).length;
+  const countOffline = unapprovedMembers.filter(
+    (m) => (m.registrationSource || m.registrationType || '').toLowerCase() === 'offline'
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -345,11 +261,11 @@ export default function UnapprovedMembership() {
           <div className="flex items-center gap-2">
             <span className="px-3 py-1.5 rounded-xl bg-white border border-[#E8DFD8] text-xs font-semibold text-[#863221] shadow-2xs flex items-center gap-1.5 shrink-0">
               <Clock className="w-3.5 h-3.5 text-amber-600" />
-              <span>{countTotal} Online</span>
+              <span>{countOnline} Online Applicant{countOnline === 1 ? '' : 's'}</span>
             </span>
             <span className="px-3 py-1.5 rounded-xl bg-[#FAF7F2] border border-[#510601]/20 text-xs font-bold text-[#510601] shadow-2xs flex items-center gap-1.5 shrink-0">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#3D705C]" />
-              <span>{countAssigned} Ready</span>
+              <User className="w-3.5 h-3.5 text-[#510601]" />
+              <span>{countOffline} Offline Applicant{countOffline === 1 ? '' : 's'}</span>
             </span>
           </div>
         }
@@ -377,7 +293,7 @@ export default function UnapprovedMembership() {
           }}
           options={[
             { value: 'ALL', label: 'All Receipt Status' },
-            { value: 'Pending', label: 'Pending' },
+            { value: 'Unassigned', label: 'Unassigned' },
             { value: 'Assigned', label: 'Assigned' }
           ]}
           widthClass="w-full sm:w-40"
@@ -430,32 +346,31 @@ export default function UnapprovedMembership() {
                     title="Select All on page"
                   />
                 </th>
-                <th className="py-3 px-4">Online Applicant</th>
+                <th className="py-3 px-4">Applicant Name</th>
                 <th className="py-3 px-4">Contact Details</th>
-                <th className="py-3 px-4">Membership Type</th>
-                <th className="py-3 px-4">State & District</th>
+                <th className="py-3 px-4">District & Location</th>
                 <th className="py-3 px-4">Reg Date</th>
                 <th className="py-3 px-4 text-center">Receipt Status</th>
-                <th className="py-3 px-4 text-right min-w-[220px]">Actions</th>
+                <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E8DFD8]">
               {paginatedList.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-[#863221]">
+                  <td colSpan="7" className="py-12 text-center text-[#863221]">
                     <div className="flex flex-col items-center justify-center">
                       <CheckCircle2 className="w-8 h-8 text-[#3D705C]/50 mb-2" />
                       <p className="font-semibold text-sm text-[#180200]">No unapproved memberships</p>
-                      <p className="text-xs text-[#863221] mt-1">
-                        All online registrations have been reviewed and approved.
-                      </p>
+
                     </div>
                   </td>
                 </tr>
               ) : (
                 paginatedList.map((m) => {
                   const isSelected = selectedIds.has(m.id);
-                  const isAssigned = m.receiptStatus === 'Assigned';
+                  const matchedReceipt = findMatchingReceiptForMember(m);
+                  const receiptNo = m.assignedReceiptNumber || m.receiptNumber || matchedReceipt?.receiptNumber;
+                  const isAssigned = isMemberReceiptAssigned(m) || Boolean(receiptNo);
 
                   return (
                     <tr
@@ -477,12 +392,17 @@ export default function UnapprovedMembership() {
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-[#180200] text-sm">{m.fullName || m.name}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                            {m.registrationSource || 'Online'}
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${(m.registrationSource || m.registrationType || 'Online').toLowerCase() === 'offline'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}
+                          >
+                            {m.registrationSource || m.registrationType || 'Online'}
                           </span>
                         </div>
                         <div className="text-[11px] text-[#863221] mt-0.5 font-mono">
-                          ID: {m.id}
+                          Reg No: {m.registrationNumber || m.id}
                         </div>
                       </td>
 
@@ -500,34 +420,40 @@ export default function UnapprovedMembership() {
                         )}
                       </td>
 
-                      {/* Membership Type */}
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#510601]/10 text-[#510601] border border-[#510601]/20">
-                          <Award className="w-3.5 h-3.5" />
-                          <span>{m.membershipType || 'Standard'}</span>
-                        </span>
-                      </td>
-
-                      {/* State & District */}
+                      {/* District & Location */}
                       <td className="py-3.5 px-4 text-[#863221]">
-                        <div className="font-medium text-[#180200] text-xs">
-                          {m.districtName || '—'}
-                        </div>
-                        <div className="text-[11px] text-[#863221]/80 mt-0.5">
-                          {m.stateName || 'Karnataka'}
-                        </div>
+                        {(() => {
+                          const pinLookup = m.postalCode ? lookupLocationByPin(m.postalCode) : null;
+                          const districtText = m.districtName || m.district || (pinLookup?.found ? pinLookup.districtName : '') || '—';
+                          const locParts = [
+                            m.locality || m.talukName || m.taluk || m.place || (pinLookup?.found ? pinLookup.talukName : ''),
+                            m.postalCode || m.pinCode ? `(${m.postalCode || m.pinCode})` : ''
+                          ].filter(Boolean).join(' ');
+                          return (
+                            <>
+                              <div className="font-semibold text-[#180200] text-xs">
+                                {districtText}
+                              </div>
+                              {locParts && (
+                                <div className="text-[11px] text-[#863221]/80 mt-0.5 truncate max-w-[180px]">
+                                  {locParts}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
 
                       {/* Registration Date */}
                       <td className="py-3.5 px-4 font-mono text-xs text-[#180200]">
-                        {m.registrationDate || '—'}
+                        {formatDate(m.registrationDate)}
                       </td>
 
                       {/* Receipt Status Badge */}
                       <td className="py-3.5 px-4 text-center">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${isAssigned
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isAssigned
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                             : 'bg-amber-50 text-amber-800 border border-amber-200'
                             }`}
                         >
@@ -535,60 +461,39 @@ export default function UnapprovedMembership() {
                             className={`w-1.5 h-1.5 rounded-full ${isAssigned ? 'bg-emerald-600' : 'bg-amber-500'
                               }`}
                           />
-                          <span>{m.receiptStatus || 'Pending'}</span>
+                          <span>{isAssigned ? 'Assigned' : 'Unassigned'}</span>
                         </span>
-                        {m.assignedReceiptNumber && (
+                        {receiptNo && (
                           <div className="text-[10px] font-mono text-[#510601] font-bold mt-0.5">
-                            #{m.assignedReceiptNumber}
+                            #{String(receiptNo).replace(/^#/, '')}
                           </div>
                         )}
                       </td>
 
-                      {/* Actions: Assign to Receipt, View & Approve */}
+                      {/* Actions: Assign to Receipt (when pending) & View Profile (always) */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
-                          {/* 1. Assign to Receipt Action */}
-                          <button
-                            type="button"
-                            onClick={() => navigate('/dashboard/receipts/entry', { state: { selectedMember: m } })}
-                            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-8 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer shrink-0 ${
-                              isAssigned
-                                ? 'bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300'
-                                : 'bg-[#510601] hover:bg-[#8C1801] active:bg-[#180200] text-white hover:shadow'
-                            }`}
-                            title={isAssigned ? `Receipt #${m.assignedReceiptNumber} assigned. Click to view or create another receipt.` : 'Open Receipt Entry and assign receipt to this applicant'}
-                          >
-                            <FileText className="w-3.5 h-3.5 shrink-0" />
-                            <span>{isAssigned ? 'Assigned' : 'Assign to Receipt'}</span>
-                          </button>
+                          {!isAssigned && (
+                            <button
+                              type="button"
+                              onClick={() => navigate('/dashboard/receipts/entry', { state: { selectedMember: m, isAssignmentFlow: true, mode: 'assign' } })}
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-8 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer shrink-0 bg-[#510601] hover:bg-[#8C1801] active:bg-[#180200] text-white hover:shadow"
+                              title="Open Receipt Entry and assign receipt to this applicant"
+                            >
+                              <FileText className="w-3.5 h-3.5 shrink-0" />
+                              <span>Assign to Receipt</span>
+                            </button>
+                          )}
 
-                          {/* 2. View Action */}
+                          {/* View Action (Always shown, opens Profile in Popup Modal) */}
                           <button
                             type="button"
                             onClick={() => setViewingMember(m)}
                             className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-8 bg-white hover:bg-[#FAF7F2] text-[#510601] hover:text-[#180200] text-xs font-bold rounded-xl border border-[#E8DFD8] hover:border-[#510601] shadow-sm transition-all cursor-pointer shrink-0"
-                            title="View Full Application"
+                            title="View Full Profile in Popup"
                           >
                             <Eye className="w-3.5 h-3.5 shrink-0 text-[#863221]" />
                             <span>View</span>
-                          </button>
-
-                          {/* 3. Approve Action */}
-                          <button
-                            type="button"
-                            onClick={() => handleInitiateApprove(m)}
-                            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 h-8 text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer shrink-0 ${isAssigned
-                              ? 'bg-[#3D705C] hover:bg-[#2e5646] text-white hover:shadow-md'
-                              : 'bg-stone-100 hover:bg-stone-200 text-stone-500 border border-stone-200'
-                              }`}
-                            title={
-                              isAssigned
-                                ? 'Approve membership and transfer to Membership List'
-                                : 'Requires Receipt to be Assigned first'
-                            }
-                          >
-                            <Check className="w-3.5 h-3.5 shrink-0" />
-                            <span>Approve</span>
                           </button>
                         </div>
                       </td>
@@ -661,312 +566,246 @@ export default function UnapprovedMembership() {
       </div>
 
       {/* ==================================================== */}
-      {/* MODAL 1: VIEW UNAPPROVED MEMBER DETAILS MODAL        */}
+      {/* MODAL 1: MEMBER PROFILE VIEW POPUP                   */}
       {/* ==================================================== */}
       <Modal isOpen={Boolean(viewingMember)} onClose={() => setViewingMember(null)}>
         {viewingMember && (
           <div
-            className="bg-white rounded-2xl max-w-2xl w-full border border-[#E8DFD8] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+            className="bg-white rounded-3xl max-w-2xl w-full border border-[#E8DFD8] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8DFD8] bg-[#FAF7F2]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#E8DFD8] bg-[#FAF7F2] px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-[#510601] text-white flex items-center justify-center font-bold text-base">
-                  {(viewingMember.fullName || viewingMember.name || 'U').charAt(0).toUpperCase()}
+                <div className="p-2.5 rounded-xl bg-[#510601]/10 text-[#510601]">
+                  <User className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-[#180200]">
-                      {viewingMember.fullName || viewingMember.name}
-                    </h3>
-                    <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">
-                      {viewingMember.registrationSource || 'Online'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#863221]">
-                    Application ID: <span className="font-mono">{viewingMember.id}</span> • Registered on {viewingMember.registrationDate || '—'}
+                  <h3 className="font-bold text-base text-[#180200]">
+                    Unapproved Member Profile
+                  </h3>
+                  <p className="text-xs text-[#863221] font-mono">
+                    Registration No: {viewingMember.registrationNumber || viewingMember.id || '—'}
                   </p>
                 </div>
               </div>
               <button
-                type="button"
                 onClick={() => setViewingMember(null)}
                 className="text-[#863221]/60 hover:text-[#180200] p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Body */}
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto text-xs text-[#180200]">
-              {/* Receipt Status Banner */}
-              <div className="bg-[#FAF7F2] p-3.5 rounded-xl border border-[#E8DFD8] flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221] block">Receipt Assignment Status</span>
-                  <span
-                    className={`inline-block mt-1 px-2.5 py-0.5 rounded text-xs font-bold ${viewingMember.receiptStatus === 'Assigned'
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border border-amber-200'
-                      }`}
-                  >
-                    {viewingMember.receiptStatus || 'Pending'}
-                  </span>
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 text-xs sm:text-sm max-h-[72vh] overflow-y-auto">
+              {/* SECTION 1: PROFILE DETAILS */}
+              <div className="space-y-2">
+                <h4 className="text-xs sm:text-sm font-bold text-[#1D4ED8] tracking-wide uppercase">
+                  Profile Details:
+                </h4>
+                <div className="bg-[#FAF7F2] p-3.5 rounded-xl border border-[#E8DFD8] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Registration Number:</span>
+                    <strong className="font-mono text-[#510601]">{viewingMember.registrationNumber || viewingMember.id || '—'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Registration Date:</span>
+                    <strong className="text-[#180200] font-mono">{formatDate(viewingMember.registrationDate || viewingMember.createdDate)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Membership Number:</span>
+                    <strong className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block mt-0.5 font-mono">
+                      {viewingMember.membershipNumber ? viewingMember.membershipNumber : 'Not Assigned'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Membership Type:</span>
+                    <strong className="text-[#510601]">{viewingMember.membershipType || viewingMember.membershipTypeCategory || '—'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Registration Source:</span>
+                    <span className="font-medium text-[#180200]">{viewingMember.registrationSource || viewingMember.registrationType || 'Offline'}</span>
+                  </div>
                 </div>
-                {viewingMember.assignedReceiptNumber && (
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-[#863221] block">Assigned Receipt</span>
-                    <span className="font-mono font-bold text-xs text-[#510601]">
-                      #{viewingMember.assignedReceiptNumber}
+              </div>
+
+              {/* SECTION 2: BASIC INFORMATION */}
+              <div className="space-y-2">
+                <h4 className="text-xs sm:text-sm font-bold text-[#1D4ED8] tracking-wide uppercase">
+                  Basic Information:
+                </h4>
+                <div className="space-y-2.5 text-xs text-[#180200]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2.5 border-b border-[#E8DFD8]">
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Name:</span>
+                      <strong className="text-sm text-[#180200]">{viewingMember.fullName || viewingMember.name || '—'} {viewingMember.gender ? `(${viewingMember.gender})` : ''}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Father / Husband Name:</span>
+                      <strong className="text-[#180200]">{viewingMember.fatherHusbandName || '—'}</strong>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2.5 border-b border-[#E8DFD8]">
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Date of Birth & Age:</span>
+                      <span className="text-[#180200]">{formatDate(viewingMember.birthDate)} {viewingMember.age ? `(Age: ${viewingMember.age})` : ''}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Mobile / Contact Number:</span>
+                      <strong className="font-mono text-[#180200]">{viewingMember.mobile || viewingMember.mobileNumber || viewingMember.contactNumber || '—'}</strong>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2.5 border-b border-[#E8DFD8]">
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Gothra:</span>
+                      <span className="text-[#180200] font-medium">{viewingMember.gothra || viewingMember.gotra || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Blood Group:</span>
+                      <strong className="text-[#510601]">{viewingMember.bloodGroup || '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Aadhar Number:</span>
+                      <span className="font-mono text-[#180200]">{viewingMember.aadharNumber || '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className="pb-2.5 border-b border-[#E8DFD8]">
+                    <span className="text-[#863221] font-semibold block">Communication Address:</span>
+                    <p className="text-[#180200] mt-0.5 leading-relaxed">
+                      {[
+                        viewingMember.address || viewingMember.addressLine,
+                        viewingMember.locality || viewingMember.postOffice,
+                        viewingMember.talukName || viewingMember.taluk,
+                        viewingMember.districtName || viewingMember.district,
+                        viewingMember.stateName || viewingMember.state || 'Karnataka',
+                        viewingMember.postalCode ? `PIN: ${viewingMember.postalCode}` : ''
+                      ].filter(Boolean).join(', ') || '—'}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Qualification:</span>
+                      <span className="text-[#180200]">{viewingMember.qualification || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[#863221] font-semibold block">Employment / Profession:</span>
+                      <span className="text-[#180200]">{viewingMember.employment || viewingMember.profession || '—'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: PAYMENT / RECEIPT INFORMATION */}
+              <div className="space-y-2">
+                <h4 className="text-xs sm:text-sm font-bold text-[#1D4ED8] tracking-wide uppercase">
+                  Payment / Receipt Information:
+                </h4>
+                <div className="bg-[#FAF7F2] p-3.5 rounded-xl border border-[#E8DFD8] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Receipt Status:</span>
+                    {(() => {
+                      const isAssigned =
+                        viewingReceiptData?.status === 'Assigned' ||
+                        viewingReceiptData?.receiptStatus === 'Assigned' ||
+                        viewingMember.receiptStatus === 'Assigned' ||
+                        Boolean(viewingMember.assignedReceiptNumber);
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold mt-0.5 ${isAssigned
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isAssigned ? 'bg-emerald-600' : 'bg-amber-400'}`} />
+                          <span>{isAssigned ? 'Assigned' : 'Unassigned'}</span>
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Receipt Number:</span>
+                    <strong className="font-mono text-[#510601]">
+                      {viewingReceiptData?.receiptNumber || viewingMember.assignedReceiptNumber || viewingMember.receiptNumber
+                        ? `#${viewingReceiptData?.receiptNumber || viewingMember.assignedReceiptNumber || viewingMember.receiptNumber}`
+                        : 'Not Assigned'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Receipt Date:</span>
+                    <span className="font-mono text-[#180200]">
+                      {formatDate(viewingReceiptData?.receiptDate || viewingMember.receiptDate || viewingMember.createdDate)}
                     </span>
                   </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Amount:</span>
+                    <strong className="text-[#510601]">
+                      Rs. {Number(viewingReceiptData?.amount !== undefined ? viewingReceiptData.amount : (viewingMember.amount || 0)).toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Payment Mode:</span>
+                    <span className="text-[#180200] font-medium">
+                      {viewingReceiptData?.paymentMode || viewingMember.paymentMode || 'Cash'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Bank Account / Details:</span>
+                    <span className="text-[#180200]">
+                      {viewingReceiptData?.bankAccount || viewingReceiptData?.bankName || viewingMember.bankAccount || viewingMember.bankName || '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Transaction ID / Cheque No:</span>
+                    <span className="font-mono text-[#180200]">
+                      {viewingReceiptData?.transactionId || viewingMember.transactionId || '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#863221] font-semibold block">Transaction Date:</span>
+                    <span className="font-mono text-[#180200]">
+                      {formatDate(viewingReceiptData?.transactionDate || viewingMember.transactionDate) || '—'}
+                    </span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-[#863221] font-semibold block">Payment Received Details / Remarks:</span>
+                    <span className="text-[#180200]">
+                      {viewingReceiptData?.description || viewingReceiptData?.paymentReceivedDetails || viewingMember.paymentRemarks || viewingMember.description || viewingMember.paymentReceivedDetails || '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-[#E8DFD8] bg-[#FAF7F2]/60 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setViewingMember(null)}
+                className="px-4 py-2 bg-white border border-[#E8DFD8] hover:border-[#863221] text-xs font-semibold text-[#863221] rounded-xl transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+
+              <div className="flex items-center gap-2">
+                {/* If Not Assigned: allow going to receipt entry */}
+                {!(viewingMember.receiptStatus === 'Assigned' || Boolean(viewingMember.assignedReceiptNumber)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m = viewingMember;
+                      setViewingMember(null);
+                      navigate('/dashboard/receipts/entry', { state: { selectedMember: m, isAssignmentFlow: true, mode: 'assign' } });
+                    }}
+                    className="px-4 py-2 bg-[#510601] hover:bg-[#8C1801] text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Assign to Receipt</span>
+                  </button>
                 )}
               </div>
-
-              {/* Section 1: Personal Details */}
-              <div className="bg-white rounded-xl p-4 border border-[#E8DFD8] space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#510601] uppercase tracking-wider">
-                  <User className="w-4 h-4" />
-                  <span>Personal / Basic Information</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Mobile</span>
-                    <p className="font-mono font-bold text-sm text-[#510601] mt-0.5">
-                      {viewingMember.mobile || viewingMember.mobileNumber || '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Phone (Alt)</span>
-                    <p className="font-mono mt-0.5">{viewingMember.phone || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Email</span>
-                    <p className="font-medium mt-0.5">{viewingMember.email || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Gotra</span>
-                    <p className="font-bold mt-0.5">{viewingMember.gothra || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Blood Group</span>
-                    <p className="font-bold mt-0.5">{viewingMember.bloodGroup || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Date of Birth</span>
-                    <p className="font-medium mt-0.5">{viewingMember.birthDate || '—'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Address & Location */}
-              <div className="bg-white rounded-xl p-4 border border-[#E8DFD8] space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#510601] uppercase tracking-wider">
-                  <MapPin className="w-4 h-4" />
-                  <span>Address & Geographical Location</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="sm:col-span-2">
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Street Address</span>
-                    <p className="font-medium mt-0.5">{viewingMember.addressLine || viewingMember.address || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">District & State</span>
-                    <p className="font-medium mt-0.5">
-                      {viewingMember.districtName || '—'}, {viewingMember.stateName || 'Karnataka'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Post / Taluk</span>
-                    <p className="font-medium mt-0.5">{viewingMember.talukName || viewingMember.post || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">PIN Code</span>
-                    <p className="font-mono font-bold text-sm text-[#510601] mt-0.5">
-                      {viewingMember.postalCode || '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Label Point / Hub</span>
-                    <p className="font-medium mt-0.5">{viewingMember.labelPoint || 'Primary Hub'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Membership Details */}
-              <div className="bg-[#FAF7F2]/60 rounded-xl p-4 border border-[#E8DFD8] grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Membership Type</span>
-                  <p className="font-bold text-[#510601] mt-0.5">{viewingMember.membershipType || 'Standard'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Category</span>
-                  <p className="font-medium mt-0.5">{viewingMember.category || 'Individual'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Profession & Company</span>
-                  <p className="font-medium mt-0.5">
-                    {viewingMember.profession ? `${viewingMember.profession}` : '—'}
-                    {viewingMember.company ? ` (${viewingMember.company})` : ''}
-                  </p>
-                </div>
-                <div className="sm:col-span-3">
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Magazine Remarks</span>
-                  <p className="font-medium mt-0.5">{viewingMember.magazineRemarks || 'None'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-[#E8DFD8] bg-[#FAF7F2]">
-              <button
-                type="button"
-                onClick={() => handleToggleReceiptMappingSimulation(viewingMember.id)}
-                className="text-xs font-semibold text-[#510601] hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>
-                  {viewingMember.receiptStatus === 'Assigned'
-                    ? 'Reset to Pending (Demo)'
-                    : 'Simulate Receipt Assigned (Demo)'}
-                </span>
-              </button>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setViewingMember(null)}
-                  className="py-2.5 px-4 border border-[#E8DFD8] text-[#863221] hover:text-[#180200] hover:bg-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const m = viewingMember;
-                    setViewingMember(null);
-                    handleInitiateApprove(m);
-                  }}
-                  className="py-2.5 px-5 bg-[#510601] hover:bg-[#863221] text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Approve Membership</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* ==================================================== */}
-      {/* MODAL 2: RECEIPT VALIDATION BLOCK ALERT MODAL        */}
-      {/* ==================================================== */}
-      <Modal isOpen={Boolean(validationBlockDialog)} onClose={() => setValidationBlockDialog(null)}>
-        {validationBlockDialog && (
-          <div
-            className="bg-white rounded-2xl max-w-md w-full border border-[#E8DFD8] shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-14 h-14 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3.5">
-              <ShieldAlert className="w-7 h-7" />
-            </div>
-
-            <h3 className="text-lg font-bold text-[#180200]">Receipt Assignment Required</h3>
-
-            <div className="mt-3 p-3 bg-amber-50 rounded-xl border border-amber-200 text-left space-y-1.5">
-              <p className="text-xs font-bold text-amber-950">
-                This membership cannot be approved until an official receipt is assigned.
-              </p>
-              <p className="text-[11px] text-amber-800">
-                Applicant: <strong>{validationBlockDialog.fullName}</strong>
-                <br />
-                Receipt Status: <span className="font-semibold text-red-600">{validationBlockDialog.receiptStatus || 'Pending'}</span>
-              </p>
-            </div>
-
-            <p className="text-xs text-[#863221] mt-3 leading-relaxed">
-              According to the HMS membership workflow, all online registrations must have an official receipt assigned before final approval into the permanent Membership List.
-            </p>
-
-            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setValidationBlockDialog(null)}
-                className="w-full py-2.5 px-4 border border-[#E8DFD8] text-[#863221] hover:text-[#180200] hover:bg-[#FAF7F2] text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-              >
-                Understood / Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const id = validationBlockDialog.id;
-                  setValidationBlockDialog(null);
-                  handleToggleReceiptMappingSimulation(id);
-                }}
-                className="w-full py-2.5 px-4 bg-[#510601] hover:bg-[#863221] text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Simulate Receipt Assignment</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* ==================================================== */}
-      {/* MODAL 3: APPROVAL CONFIRMATION DIALOG                */}
-      {/* ==================================================== */}
-      <Modal isOpen={Boolean(approveDialog)} onClose={() => setApproveDialog(null)}>
-        {approveDialog && (
-          <div
-            className="bg-white rounded-2xl max-w-md w-full border border-[#E8DFD8] shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-3.5">
-              <CheckCircle2 className="w-7 h-7" />
-            </div>
-
-            <h3 className="text-lg font-bold text-[#180200]">Approve Membership</h3>
-            <p className="text-sm font-semibold text-[#510601] mt-2">
-              Are you sure you want to approve this membership?
-            </p>
-
-            <div className="mt-3 p-3.5 bg-[#FAF7F2] rounded-xl border border-[#E8DFD8] text-xs text-left space-y-1">
-              <div>
-                <span className="text-[#863221]">Member Name: </span>
-                <strong className="text-[#180200]">{approveDialog.fullName || approveDialog.name}</strong>
-              </div>
-              <div>
-                <span className="text-[#863221]">Membership Type: </span>
-                <strong className="text-[#510601]">{approveDialog.membershipType}</strong>
-              </div>
-              <div>
-                <span className="text-[#863221]">Assigned Receipt: </span>
-                <span className="font-mono font-bold text-emerald-700">
-                  {approveDialog.assignedReceiptNumber || 'Assigned & Mapped'}
-                </span>
-              </div>
-              <div className="pt-2 border-t border-[#E8DFD8] text-[11px] text-[#863221]">
-                ✓ Member will be removed from Unapproved Membership and moved into the <strong>Membership List</strong>.
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => setApproveDialog(null)}
-                className="w-full py-2.5 px-4 border border-[#E8DFD8] text-[#863221] hover:text-[#180200] hover:bg-[#FAF7F2] text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmApproval}
-                className="w-full py-2.5 px-4 bg-[#3D705C] hover:bg-[#2F5747] text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Approve</span>
-              </button>
             </div>
           </div>
         )}

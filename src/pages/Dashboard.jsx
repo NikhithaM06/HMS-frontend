@@ -12,6 +12,7 @@ import { statCards, registrationData, membershipTypeData, districtData, recentAc
 import Modal from '../components/Modal';
 import clsx from 'clsx';
 import { Link } from 'react-router-dom';
+import { formatDate } from '../utils/dateUtils';
 
 const iconMap = {
   'users': Users,
@@ -164,9 +165,9 @@ const StatCard = ({ title, value, icon, color, trend }) => {
 export default function Dashboard() {
   const [viewingMember, setViewingMember] = useState(null);
 
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  });
+  const today = new Date();
+  const dayName = today.toLocaleDateString('en-US', { weekday: 'long' });
+  const currentDate = `${dayName}, ${formatDate(today)}`;
 
   const handleOpenMemberView = (item) => {
     const memberDetails = RECENT_MEMBERS_DETAILS[item.id] || {
@@ -219,7 +220,7 @@ export default function Dashboard() {
             </div>
             <span className="text-xs font-semibold text-[#180200] text-center">Add Receipt</span>
           </Link>
-          <Link to="/dashboard/membership/list" state={{ openAddModal: true }} className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-[#E8DFD8] shadow-sm hover:border-[#3D705C] hover:shadow-md transition-all group h-full">
+          <Link to="/dashboard/membership/register" className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-[#E8DFD8] shadow-sm hover:border-[#3D705C] hover:shadow-md transition-all group h-full">
             <div className="h-10 w-10 rounded-full bg-[#3D705C]/10 flex items-center justify-center mb-3 group-hover:bg-[#3D705C] transition-colors">
               <UserPlus className="h-5 w-5 text-[#3D705C] group-hover:text-white transition-colors" />
             </div>
@@ -516,7 +517,7 @@ export default function Dashboard() {
                   <span className="text-[10px] uppercase font-bold text-[#863221]">Registration Date</span>
                   <p className="font-mono font-medium mt-0.5 flex items-center gap-1 text-[#863221]">
                     <Calendar className="w-3 h-3 text-[#863221]/60" />
-                    {viewingMember.date || '—'}
+                    {formatDate(viewingMember.date)}
                   </p>
                 </div>
               </div>

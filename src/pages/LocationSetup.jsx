@@ -965,17 +965,8 @@ export default function LocationSetup() {
         <div className="space-y-6">
           {/* Section 1: States Card */}
           <div className="bg-white rounded-xl border border-[#E8DFD8] p-5 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-[#E8DFD8]">
-              <div>
-
-                <p className="text-xs text-[#863221] mt-1">
-                  Select a state to view and manage its districts and taluks below. Creation of arbitrary states outside Karnataka & Kerala is restricted.
-                </p>
-              </div>
-            </div>
-
             {/* State Selection Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {states.map((st) => {
                 const isSelected = st.id === selectedStateId;
                 const stateDistCount = districts.filter((d) => d.stateId === st.id).length;
@@ -1021,11 +1012,10 @@ export default function LocationSetup() {
                               nextStatus: st.status === 'Active' ? 'Inactive' : 'Active'
                             });
                           }}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                            st.status === 'Active'
-                              ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                          }`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${st.status === 'Active'
+                            ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                            }`}
                           title={`Click to ${st.status === 'Active' ? 'deactivate' : 'activate'}`}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${st.status === 'Active' ? 'bg-[#3D705C]' : 'bg-gray-400'}`} />
@@ -1142,11 +1132,10 @@ export default function LocationSetup() {
                                     nextStatus: dist.status === 'Active' ? 'Inactive' : 'Active'
                                   })
                                 }
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                                  dist.status === 'Active'
-                                    ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                                }`}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${dist.status === 'Active'
+                                  ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                                  }`}
                                 title={`Click to ${dist.status === 'Active' ? 'deactivate' : 'activate'}`}
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full ${dist.status === 'Active' ? 'bg-[#3D705C]' : 'bg-gray-400'}`} />
@@ -1287,11 +1276,10 @@ export default function LocationSetup() {
                                     nextStatus: tk.status === 'Active' ? 'Inactive' : 'Active'
                                   })
                                 }
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                                  tk.status === 'Active'
-                                    ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                                }`}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${tk.status === 'Active'
+                                  ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                                  }`}
                                 title={`Click to ${tk.status === 'Active' ? 'deactivate' : 'activate'}`}
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full ${tk.status === 'Active' ? 'bg-[#3D705C]' : 'bg-gray-400'}`} />
@@ -1548,11 +1536,10 @@ export default function LocationSetup() {
                                   nextStatus: displayStatus === 'Active' ? 'Inactive' : 'Active'
                                 })
                               }
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                                displayStatus === 'Active'
-                                  ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
-                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                              }`}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${displayStatus === 'Active'
+                                ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
+                                }`}
                               title={`Click to ${displayStatus === 'Active' ? 'deactivate' : 'activate'}`}
                             >
                               <span className={`w-1.5 h-1.5 rounded-full ${displayStatus === 'Active' ? 'bg-[#3D705C]' : 'bg-gray-400'}`} />
@@ -1718,11 +1705,10 @@ export default function LocationSetup() {
                   }
                 }}
                 placeholder="e.g. Bengaluru Urban, Dakshina Kannada"
-                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${
-                  districtFormErrors.name
-                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                }`}
+                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${districtFormErrors.name
+                  ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                  : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                  }`}
               />
               {districtFormErrors.name && (
                 <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
@@ -1837,11 +1823,10 @@ export default function LocationSetup() {
                     setTalukFormErrors({ ...talukFormErrors, districtId: null });
                   }
                 }}
-                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${
-                  talukFormErrors.districtId
-                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                }`}
+                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${talukFormErrors.districtId
+                  ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                  : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                  }`}
               >
                 <option value="">-- Select District --</option>
                 {districts
@@ -1874,11 +1859,10 @@ export default function LocationSetup() {
                   }
                 }}
                 placeholder="e.g. Mangaluru, Sirsi, Udupi"
-                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${
-                  talukFormErrors.name
-                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                }`}
+                className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${talukFormErrors.name
+                  ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                  : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                  }`}
               />
               {talukFormErrors.name && (
                 <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
@@ -1974,11 +1958,10 @@ export default function LocationSetup() {
                     }
                   }}
                   placeholder="e.g. 576101"
-                  className={`w-full px-3.5 py-2.5 text-sm font-mono bg-white border rounded-xl focus:outline-none transition-colors ${
-                    postalFormErrors.postalCode
-                      ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                      : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                  }`}
+                  className={`w-full px-3.5 py-2.5 text-sm font-mono bg-white border rounded-xl focus:outline-none transition-colors ${postalFormErrors.postalCode
+                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                    }`}
                 />
                 {postalFormErrors.postalCode && (
                   <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
@@ -2003,11 +1986,10 @@ export default function LocationSetup() {
                     }
                   }}
                   placeholder="e.g. Udupi H.O, Malleswaram"
-                  className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-xl focus:outline-none transition-colors ${
-                    postalFormErrors.area
-                      ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                      : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                  }`}
+                  className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-xl focus:outline-none transition-colors ${postalFormErrors.area
+                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                    }`}
                 />
                 {postalFormErrors.area && (
                   <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
@@ -2078,11 +2060,10 @@ export default function LocationSetup() {
                       setPostalFormErrors({ ...postalFormErrors, districtId: null });
                     }
                   }}
-                  className={`w-full px-3 py-2 text-xs bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${
-                    postalFormErrors.districtId
-                      ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                      : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                  }`}
+                  className={`w-full px-3 py-2 text-xs bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${postalFormErrors.districtId
+                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                    }`}
                 >
                   <option value="">-- Select District --</option>
                   {activeDistrictsForModal.map((d) => (
@@ -2112,11 +2093,10 @@ export default function LocationSetup() {
                       setPostalFormErrors({ ...postalFormErrors, talukId: null });
                     }
                   }}
-                  className={`w-full px-3 py-2 text-xs bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${
-                    postalFormErrors.talukId
-                      ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                      : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                  }`}
+                  className={`w-full px-3 py-2 text-xs bg-white border rounded-xl text-sm font-medium text-[#180200] focus:outline-none transition-colors ${postalFormErrors.talukId
+                    ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
+                    : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                    }`}
                 >
                   <option value="">-- Select Taluk --</option>
                   {activeTaluksForModal.map((t) => (
@@ -2354,11 +2334,10 @@ export default function LocationSetup() {
             onClick={(e) => e.stopPropagation()}
           >
             <div
-              className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3.5 ${
-                statusDialog.nextStatus === 'Inactive'
-                  ? 'bg-red-100 text-[#ED4636]'
-                  : 'bg-[#3D705C]/10 text-[#3D705C]'
-              }`}
+              className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3.5 ${statusDialog.nextStatus === 'Inactive'
+                ? 'bg-red-100 text-[#ED4636]'
+                : 'bg-[#3D705C]/10 text-[#3D705C]'
+                }`}
             >
               {statusDialog.nextStatus === 'Inactive' ? (
                 <AlertTriangle className="w-7 h-7" />
@@ -2372,10 +2351,10 @@ export default function LocationSetup() {
               {statusDialog.type === 'state'
                 ? 'State'
                 : statusDialog.type === 'district'
-                ? 'District'
-                : statusDialog.type === 'taluk'
-                ? 'Taluk'
-                : 'PIN Code'}?
+                  ? 'District'
+                  : statusDialog.type === 'taluk'
+                    ? 'Taluk'
+                    : 'PIN Code'}?
             </h3>
             <p className="text-xs text-[#863221] mt-1.5 leading-relaxed">
               Are you sure you want to mark{' '}
@@ -2396,11 +2375,10 @@ export default function LocationSetup() {
               <button
                 type="button"
                 onClick={handleConfirmStatusToggle}
-                className={`w-full py-2.5 px-4 text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer ${
-                  statusDialog.nextStatus === 'Inactive'
-                    ? 'bg-[#ED4636] hover:bg-[#C93324]'
-                    : 'bg-[#3D705C] hover:bg-[#2F5747]'
-                }`}
+                className={`w-full py-2.5 px-4 text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer ${statusDialog.nextStatus === 'Inactive'
+                  ? 'bg-[#ED4636] hover:bg-[#C93324]'
+                  : 'bg-[#3D705C] hover:bg-[#2F5747]'
+                  }`}
               >
                 {statusDialog.nextStatus === 'Inactive' ? 'Deactivate' : 'Activate'}
               </button>
@@ -2430,8 +2408,8 @@ export default function LocationSetup() {
               {deleteDialog.type === 'district'
                 ? 'District'
                 : deleteDialog.type === 'taluk'
-                ? 'Taluk'
-                : 'PIN Code'}?
+                  ? 'Taluk'
+                  : 'PIN Code'}?
             </h3>
             <p className="text-xs text-[#863221] mt-1.5 leading-relaxed">
               Are you sure you want to delete{' '}

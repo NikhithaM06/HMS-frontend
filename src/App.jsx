@@ -12,6 +12,7 @@ import ReceiptEntry from './pages/ReceiptEntry';
 import ReceiptTracking from './pages/ReceiptTracking';
 import LabelList from './pages/LabelList';
 import MembershipList from './pages/MembershipList';
+import RegisterNewMember from './pages/RegisterNewMember';
 import UnapprovedMembership from './pages/UnapprovedMembership';
 import OrganisationSettings from './pages/OrganisationSettings';
 import BankDetailsManagement from './pages/BankDetailsManagement';
@@ -22,17 +23,33 @@ function App() {
       <Routes>
         <Route path="/" element={<Login />} />
 
+        {/* Direct / Root-level path shortcuts redirecting to dashboard */}
+        <Route path="/membership/register" element={<Navigate to="/dashboard/membership/register" replace />} />
+        <Route path="/membership/add" element={<Navigate to="/dashboard/membership/register" replace />} />
+        <Route path="/membership/edit" element={<Navigate to="/dashboard/membership/edit" replace />} />
+        <Route path="/membership/list" element={<Navigate to="/dashboard/membership/list" replace />} />
+        <Route path="/membership/unapproved" element={<Navigate to="/dashboard/membership/unapproved" replace />} />
+        <Route path="/membership" element={<Navigate to="/dashboard/membership/list" replace />} />
+
         <Route path="/dashboard" element={<MainLayout />}>
           <Route index element={<Dashboard />} />
           
           {/* Membership Module Routes */}
           <Route path="membership/list" element={<MembershipList />} />
           <Route path="membership/unapproved" element={<UnapprovedMembership />} />
-          <Route path="membership/register" element={<MembershipList />} />
-          <Route path="membership/add" element={<MembershipList />} />
+          <Route path="membership/register" element={<RegisterNewMember />} />
+          <Route path="membership/add" element={<RegisterNewMember />} />
+          <Route path="membership/edit" element={<RegisterNewMember />} />
+          <Route path="membership/edit/:id" element={<RegisterNewMember />} />
+          <Route path="membership/view" element={<RegisterNewMember />} />
+          <Route path="membership/view/:id" element={<RegisterNewMember />} />
           <Route path="membership" element={<Navigate to="/dashboard/membership/list" replace />} />
           <Route path="members" element={<Navigate to="/dashboard/membership/list" replace />} />
           <Route path="members/list" element={<Navigate to="/dashboard/membership/list" replace />} />
+          <Route path="members/edit" element={<RegisterNewMember />} />
+          <Route path="members/edit/:id" element={<RegisterNewMember />} />
+          <Route path="members/view" element={<RegisterNewMember />} />
+          <Route path="members/view/:id" element={<RegisterNewMember />} />
 
           {/* Master Management Routes */}
           <Route path="master/location-setup" element={<LocationSetup />} />

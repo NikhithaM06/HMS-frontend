@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { initialRoles, allPrivileges } from '../data/rolesData';
 import { initialUsers } from '../data/userData';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
 
 export default function UserManagement() {
   // Master state
@@ -609,7 +610,7 @@ export default function UserManagement() {
 
                       {/* Last Login */}
                       <td className="px-6 py-4 text-xs text-[#863221]/80 font-medium">
-                        {user.lastLogin || 'Never'}
+                        {formatDateTime(user.lastLogin, 'Never')}
                       </td>
 
                       {/* Actions */}
@@ -1177,12 +1178,12 @@ export default function UserManagement() {
 
                 <div>
                   <p className="text-[#863221] font-semibold uppercase">Created Date</p>
-                  <p className="text-[#180200] font-medium mt-0.5">{viewingUser.createdAt}</p>
+                  <p className="text-[#180200] font-medium mt-0.5">{formatDate(viewingUser.createdAt)}</p>
                 </div>
 
                 <div>
                   <p className="text-[#863221] font-semibold uppercase">Last Login</p>
-                  <p className="text-[#180200] font-medium mt-0.5">{viewingUser.lastLogin || 'Never'}</p>
+                  <p className="text-[#180200] font-medium mt-0.5">{formatDateTime(viewingUser.lastLogin, 'Never')}</p>
                 </div>
               </div>
 

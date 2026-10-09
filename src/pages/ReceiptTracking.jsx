@@ -36,8 +36,11 @@ import {
   deleteStoredReceipt,
   mapReceiptToMember,
   isReceiptUnmapped,
+  getActivePaymentModes,
   PARTICULARS_OPTIONS
 } from '../utils/receiptStore';
+import { formatDate, formatDateTime } from '../utils/dateUtils';
+import DateInput from '../components/DateInput';
 
 // Helper to format currency in Indian Rupees
 const formatINR = (amount) => {
@@ -47,16 +50,6 @@ const formatINR = (amount) => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
   }).format(amount || 0);
-};
-
-// Helper to format date string (YYYY-MM-DD to DD-MM-YYYY)
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-  return dateStr;
 };
 
 // Helper for number to words (Indian Numbering System)
@@ -85,7 +78,6 @@ export default function ReceiptTracking() {
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [particularsFilter, setParticularsFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // ALL, Assigned, Unassigned
 
   // Modals State
   const [viewingReceipt, setViewingReceipt] = useState(null);
@@ -96,6 +88,8 @@ export default function ReceiptTracking() {
 
   // Toast State
   const [toastMessage, setToastMessage] = useState(null);
+
+  const [paymentModes, setPaymentModes] = useState(() => getActivePaymentModes());
 
   const showToast = (message, type = 'success') => {
     setToastMessage({ message, type });
@@ -108,19 +102,56 @@ export default function ReceiptTracking() {
     setReceipts(getStoredReceipts());
     setMembers(getStoredMembers());
     setUnapprovedMembers(getStoredUnapprovedMembers());
+    setPaymentModes(getActivePaymentModes());
   };
 
-  // Synchronize on mount
+  // Synchronize on mount and on any receipt / unapproved update events
   useEffect(() => {
     reloadData();
+    const handleModesChanged = () => setPaymentModes(getActivePaymentModes());
+    const handleReceiptsUpdated = () => reloadData();
+
+    window.addEventListener('hms_payment_modes_updated', handleModesChanged);
+    window.addEventListener('hms_receipts_updated', handleReceiptsUpdated);
+    window.addEventListener('hms_unapproved_members_updated', handleReceiptsUpdated);
+    window.addEventListener('storage', handleReceiptsUpdated);
+
+    return () => {
+      window.removeEventListener('hms_payment_modes_updated', handleModesChanged);
+      window.removeEventListener('hms_receipts_updated', handleReceiptsUpdated);
+      window.removeEventListener('hms_unapproved_members_updated', handleReceiptsUpdated);
+      window.removeEventListener('storage', handleReceiptsUpdated);
+    };
   }, []);
 
   // ----------------------------------------------------
-  // FILTERING LOGIC
+  // FILTERING LOGIC (STRICTLY EXCLUDES ASSIGNED RECEIPTS)
   // ----------------------------------------------------
   const filteredReceipts = useMemo(() => {
+    const unapproved = getStoredUnapprovedMembers();
+    const assignedReceiptNos = new Set(
+      unapproved
+        .filter((u) => u.assignedReceiptNumber || u.receiptNumber)
+        .map((u) => String(u.assignedReceiptNumber || u.receiptNumber).toLowerCase().replace(/^#/, ''))
+    );
+    const assignedMemberIds = new Set(unapproved.map((u) => String(u.id || '').toLowerCase()));
+    const assignedRegNos = new Set(unapproved.map((u) => String(u.registrationNumber || '').toLowerCase()));
+
     return receipts.filter((r) => {
-      const isUnmapped = isReceiptUnmapped(r);
+      // 0. ABSOLUTE EXCLUSION: Assigned receipts or unapproved member receipts NEVER appear in Receipt Tracking
+      if (r.status === 'Assigned' || r.receiptStatus === 'Assigned' || r.mappingStatus === 'Assigned') {
+        return false;
+      }
+      if (r.memberId && assignedMemberIds.has(String(r.memberId).toLowerCase())) {
+        return false;
+      }
+      if (r.registrationNumber && assignedRegNos.has(String(r.registrationNumber).toLowerCase())) {
+        return false;
+      }
+      const rNum = String(r.receiptNumber || '').toLowerCase().replace(/^#/, '');
+      if (rNum && assignedReceiptNos.has(rNum)) {
+        return false;
+      }
 
       // 1. Search Query
       if (searchQuery.trim()) {
@@ -152,17 +183,9 @@ export default function ReceiptTracking() {
         }
       }
 
-      // 3. Status Filter (Assigned vs Unassigned)
-      if (statusFilter === 'Assigned' && isUnmapped) {
-        return false;
-      }
-      if (statusFilter === 'Unassigned' && !isUnmapped) {
-        return false;
-      }
-
       return true;
     });
-  }, [receipts, searchQuery, particularsFilter, statusFilter]);
+  }, [receipts, searchQuery, particularsFilter]);
 
   // ----------------------------------------------------
   // ACTION HANDLERS
@@ -287,11 +310,10 @@ export default function ReceiptTracking() {
       {/* Toast Alert Notification */}
       {toastMessage && (
         <div
-          className={`fixed bottom-6 right-6 z-[10000] flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border transition-all animate-in slide-in-from-bottom-4 duration-200 ${
-            toastMessage.type === 'error'
+          className={`fixed bottom-6 right-6 z-[10000] flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border transition-all animate-in slide-in-from-bottom-4 duration-200 ${toastMessage.type === 'error'
               ? 'bg-[#180200] text-white border-red-500/50'
               : 'bg-[#180200] text-white border-emerald-500/50'
-          }`}
+            }`}
         >
           {toastMessage.type === 'error' ? (
             <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
@@ -324,13 +346,11 @@ export default function ReceiptTracking() {
         onSearchChange={(val) => setSearchQuery(val)}
         searchPlaceholder="Search..."
         activeFiltersCount={
-          (particularsFilter !== 'ALL' ? 1 : 0) +
-          (statusFilter !== 'ALL' ? 1 : 0)
+          (particularsFilter !== 'ALL' ? 1 : 0)
         }
         onResetFilters={() => {
           setSearchQuery('');
           setParticularsFilter('ALL');
-          setStatusFilter('ALL');
         }}
       >
         {/* Receipt Type Filter */}
@@ -343,21 +363,9 @@ export default function ReceiptTracking() {
           ]}
           widthClass="w-full sm:w-56"
         />
-
-        {/* Status Filter */}
-        <FilterSelect
-          value={statusFilter}
-          onChange={(val) => setStatusFilter(val)}
-          options={[
-            { value: 'ALL', label: 'All Statuses' },
-            { value: 'Assigned', label: 'Assigned' },
-            { value: 'Unassigned', label: 'Unassigned' }
-          ]}
-          widthClass="w-full sm:w-48"
-        />
       </SearchFilterBar>
 
-      {/* Main Table Card (EXACTLY 6 Columns) */}
+      {/* Main Table Card */}
       <div className="bg-white rounded-2xl border border-[#E8DFD8] shadow-[0_4px_12px_-2px_rgba(24,2,0,0.04)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[800px]">
@@ -365,45 +373,36 @@ export default function ReceiptTracking() {
               <tr className="bg-[#FAF7F2] border-b border-[#E8DFD8] text-xs font-bold text-[#863221] uppercase tracking-wider">
                 <th className="py-3.5 px-4 whitespace-nowrap">Receipt Number</th>
                 <th className="py-3.5 px-4 whitespace-nowrap">Receipt Date</th>
-                <th className="py-3.5 px-4 whitespace-nowrap">Member Name</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Name</th>
                 <th className="py-3.5 px-4 whitespace-nowrap">Mobile</th>
                 <th className="py-3.5 px-4 whitespace-nowrap">Receipt Type</th>
-                <th className="py-3.5 px-4 text-right whitespace-nowrap min-w-[170px]">Action</th>
+                <th className="py-3.5 px-4 whitespace-nowrap">Amount</th>
+                <th className="py-3.5 px-4 text-right whitespace-nowrap min-w-[140px]">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E8DFD8] text-xs sm:text-sm">
               {filteredReceipts.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-14 text-center text-[#863221]">
+                  <td colSpan="7" className="py-14 text-center text-[#863221]">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <FileSpreadsheet className="w-10 h-10 text-[#863221]/40" />
                       <p className="text-base font-bold text-[#180200]">No receipts found</p>
                       <p className="text-xs text-[#863221] max-w-sm mx-auto">
-                        Every receipt in the system (assigned and unassigned) will appear here.
+                        Receipts entered in the system will appear here.
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 filteredReceipts.map((receipt) => {
-                  const isUnmapped = isReceiptUnmapped(receipt);
-
                   return (
                     <tr
                       key={receipt.id}
-                      className={`transition-colors ${
-                        isUnmapped
-                          ? 'bg-amber-50/70 hover:bg-amber-100/60 text-[#180200]'
-                          : 'bg-white hover:bg-[#FAF7F2]/60 text-[#180200]'
-                      }`}
+                      className="bg-white hover:bg-[#FAF7F2]/60 text-[#180200] transition-colors"
                     >
                       {/* Column 1: Receipt Number */}
                       <td className="py-3.5 px-4 font-mono font-bold text-xs">
-                        <span className={`px-2 py-0.5 rounded tracking-wider border ${
-                          isUnmapped
-                            ? 'bg-amber-100/80 text-amber-900 border-amber-300'
-                            : 'bg-[#510601]/5 text-[#510601] border-[#510601]/20'
-                        }`}>
+                        <span className="px-2 py-0.5 rounded tracking-wider border bg-[#510601]/5 text-[#510601] border-[#510601]/20">
                           #{receipt.receiptNumber}
                         </span>
                       </td>
@@ -413,34 +412,23 @@ export default function ReceiptTracking() {
                         {formatDate(receipt.receiptDate)}
                       </td>
 
-                      {/* Column 3: Member Name */}
+                      {/* Column 3: Member / Payee Name */}
                       <td className="py-3.5 px-4">
-                        {isUnmapped ? (
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-200/60 text-amber-900 border border-amber-300/80 shadow-2xs">
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                            <span>Unassigned</span>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="font-bold text-[#180200]">
-                              {receipt.name || '—'}
-                            </span>
-                            {receipt.membershipNo && (
-                              <div className="text-[10px] font-mono text-[#863221] mt-0.5">
-                                #{receipt.membershipNo}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <div>
+                          <span className="font-bold text-[#180200]">
+                            {receipt.name || '—'}
+                          </span>
+                          {receipt.membershipNo && (
+                            <div className="text-[10px] font-mono text-[#863221] mt-0.5">
+                              #{receipt.membershipNo}
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Column 4: Mobile */}
                       <td className="py-3.5 px-4 font-mono text-xs">
-                        {isUnmapped || !receipt.mobile ? (
-                          <span className="text-gray-400">—</span>
-                        ) : (
-                          receipt.mobile
-                        )}
+                        {receipt.mobile ? receipt.mobile : <span className="text-gray-400">—</span>}
                       </td>
 
                       {/* Column 5: Receipt Type */}
@@ -448,7 +436,12 @@ export default function ReceiptTracking() {
                         {receipt.particulars || 'Membership'}
                       </td>
 
-                      {/* Column 6: Action */}
+                      {/* Column 6: Amount */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-[#3D705C] text-xs whitespace-nowrap">
+                        {formatINR(receipt.amount)}
+                      </td>
+
+                      {/* Column 7: Action */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* View Action */}
@@ -496,16 +489,6 @@ export default function ReceiptTracking() {
             Showing <strong className="text-[#180200]">{filteredReceipts.length}</strong> of{' '}
             <strong className="text-[#180200]">{receipts.length}</strong> total receipts
           </div>
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1 font-semibold text-emerald-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              <span>{receipts.filter((r) => !isReceiptUnmapped(r)).length} Assigned</span>
-            </span>
-            <span className="inline-flex items-center gap-1 font-semibold text-amber-800">
-              <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span>{receipts.filter((r) => isReceiptUnmapped(r)).length} Unassigned</span>
-            </span>
-          </div>
         </div>
       </div>
 
@@ -540,26 +523,16 @@ export default function ReceiptTracking() {
 
             {/* Modal Body */}
             <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto text-xs">
-              {/* Status Header Chip */}
-              <div className="p-3 bg-[#FAF7F2]/60 rounded-xl border border-[#E8DFD8] flex items-center justify-between">
+              {/* Amount Summary Header */}
+              <div className="p-3.5 bg-[#FAF7F2]/80 rounded-xl border border-[#E8DFD8] flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221] block">Status</span>
-                  {isReceiptUnmapped(viewingReceipt) ? (
-                    <span className="inline-flex items-center gap-1 mt-0.5 px-2.5 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Unassigned</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 mt-0.5 px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                      <span>Assigned to Member #{viewingReceipt.membershipNo || viewingReceipt.memberId}</span>
-                    </span>
-                  )}
+                  <span className="text-[10px] uppercase font-bold text-[#863221] block">Receipt Type</span>
+                  <span className="font-bold text-sm text-[#510601]">{viewingReceipt.particulars || 'Membership'}</span>
                 </div>
 
                 <div className="text-right">
                   <span className="text-[10px] uppercase font-bold text-[#863221] block">Amount Paid</span>
-                  <span className="text-base font-extrabold text-[#510601]">
+                  <span className="text-base font-extrabold text-[#3D705C]">
                     {formatINR(viewingReceipt.amount)}
                   </span>
                 </div>
@@ -575,7 +548,7 @@ export default function ReceiptTracking() {
                   <div>
                     <span className="text-[10px] uppercase font-bold text-[#863221]">Name</span>
                     <p className="font-bold text-[#180200] mt-0.5">
-                      {viewingReceipt.name || <span className="text-gray-400 italic">Unassigned</span>}
+                      {viewingReceipt.name || '—'}
                     </p>
                   </div>
                   <div>
@@ -707,8 +680,7 @@ export default function ReceiptTracking() {
                     <label className="block text-[11px] font-bold text-[#863221] uppercase mb-1">
                       Receipt Date <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       name="receiptDate"
                       value={editFormData.receiptDate || ''}
                       onChange={handleEditChange}
@@ -790,18 +762,15 @@ export default function ReceiptTracking() {
                     </label>
                     <select
                       name="paymentMode"
-                      value={editFormData.paymentMode || 'Online'}
+                      value={editFormData.paymentMode || (paymentModes[0] || 'Cash')}
                       onChange={handleEditChange}
                       className="w-full py-2 px-3 bg-white border border-[#E8DFD8] rounded-xl text-xs focus:outline-none focus:border-[#510601] cursor-pointer"
                     >
-                      <option value="Online">Online</option>
-                      <option value="Offline">Offline</option>
-                      <option value="Cash">Cash</option>
-                      <option value="Cheque">Cheque</option>
-                      <option value="NEFT/RTGS">NEFT/RTGS</option>
-                      <option value="KBL 1075">KBL 1075</option>
-                      <option value="SBI">SBI</option>
-                      <option value="Canara Bank">Canara Bank</option>
+                      {paymentModes.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {mode}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

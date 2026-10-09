@@ -36,6 +36,20 @@
     --color-warm-brown: var(--brand-brown);
   }
 
+  /* Ensure all inputs turn pure white on click/focus and prevent default light-blue browser autofill background */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active,
+  select:-webkit-autofill,
+  textarea:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+    -webkit-text-fill-color: #180200 !important;
+    box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+    color: #180200 !important;
+    transition: background-color 5000s ease-in-out 0s;
+  }
+
   /* Keep warm background for login input even with browser autofill */
   .login-input-field:-webkit-autofill,
   .login-input-field:-webkit-autofill:hover,
@@ -47,6 +61,13 @@
     color: #280E07 !important;
     transition: background-color 5000s ease-in-out 0s;
   }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    background-color: #FFFFFF !important;
+  }
+
 
   html,
   body,

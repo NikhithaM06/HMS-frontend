@@ -27,6 +27,7 @@ import {
   FileText
 } from 'lucide-react';
 import { allPrivileges, allPrivilegeIds, initialRoles } from '../data/rolesData';
+import { formatDate } from '../utils/dateUtils';
 
 export default function RolesAndPrivileges() {
   // Master state
@@ -588,7 +589,7 @@ export default function RolesAndPrivileges() {
                         </button>
                       </td>
                       <td className="px-6 py-4 text-xs text-[#863221]/80 font-medium">
-                        {role.createdAt}
+                        {formatDate(role.createdAt)}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -1163,10 +1164,10 @@ export default function RolesAndPrivileges() {
 
                 <div className="grid grid-cols-2 gap-3 text-xs text-[#863221]">
                   <div>
-                    <span className="font-semibold">Created Date:</span> {viewingRole.createdAt}
+                    <span className="font-semibold">Created Date:</span> {formatDate(viewingRole.createdAt)}
                   </div>
                   <div>
-                    <span className="font-semibold">Last Updated:</span> {viewingRole.updatedAt}
+                    <span className="font-semibold">Last Updated:</span> {formatDate(viewingRole.updatedAt)}
                   </div>
                 </div>
               </div>

@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import SearchFilterBar from '../components/SearchFilterBar';
 import FilterSelect from '../components/FilterSelect';
+import SearchableFormSelect from '../components/SearchableFormSelect';
 import {
   UserCheck,
   User,
@@ -32,27 +33,101 @@ import {
   Award,
   TrendingUp,
   Coins,
-  Receipt
+  Receipt,
+  Info
 } from 'lucide-react';
 import {
   getStoredMembers,
   saveStoredMembers,
   getStoredMembershipTypes,
   getStoredReceipts,
+  findMatchingReceiptForMember,
   calculateMemberMembershipStatus,
   getStoredStates,
   getStoredDistricts,
   getStoredTaluks,
   getStoredPostalCodes,
   lookupLocationByPin,
-  getStoredGothras
+  getStoredGothras,
+  getActivePaymentModes
 } from '../utils/receiptStore';
+import CountryCodeSelect from '../components/CountryCodeSelect';
+import { validateInternationalPhone } from '../utils/phoneValidation';
+import { formatDate, formatDateTime, toISODate } from '../utils/dateUtils';
+import DateInput from '../components/DateInput';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-const MEMBER_CATEGORIES = ['Individual', 'Family', 'Institutional', 'Senior Citizen', 'Corporate', 'General'];
+const QUALIFICATIONS_LIST = [
+  'BE',
+  'BTech',
+  'MBA',
+  'MCA',
+  'ME',
+  'MTech',
+  'MS Eng',
+  'CA',
+  'CS',
+  'MBBS',
+  'MD',
+  'MS Med',
+  'MSc',
+  'MCom',
+  'MA',
+  'MFA',
+  'ML',
+  'BCom',
+  'BSc',
+  'BCA',
+  'BBA',
+  'BA',
+  'BDS',
+  'BFA',
+  'BArch',
+  'BFD',
+  'BDes',
+  'BJMC',
+  'LLB',
+  'BAMS',
+  'BPharm',
+  'PhD',
+  'Diploma',
+  'ICWA',
+  'MPharm',
+  'BHMS',
+  'BHM',
+  'BSc in Nursing',
+  'MSc in Nursing',
+  'BL',
+  'MHA',
+  'BLA',
+  'BSc MLT',
+  'MSc MLT',
+  'BNYS',
+  'BPT',
+  'MPT',
+  'MPED',
+  'PUC',
+  'HIGH SCHOOL',
+  'OTHERS',
+  'ANY'
+];
+
+
+const BEHALF_OPTIONS = [
+  'Self',
+  'Family',
+  'Father',
+  'Mother',
+  'Son',
+  'Daughter',
+  'Spouse',
+  'Relative',
+  'Others'
+];
 
 export default function MembershipList() {
   const location = useLocation();
+  const navigate = useNavigate();
   // ----------------------------------------------------
   // MASTER STORES
   // ----------------------------------------------------
@@ -64,6 +139,7 @@ export default function MembershipList() {
   const [taluks, setTaluks] = useState(getStoredTaluks());
   const [postalCodes, setPostalCodes] = useState(getStoredPostalCodes());
   const [gothras] = useState(getStoredGothras());
+  const [paymentModes, setPaymentModes] = useState(getActivePaymentModes());
 
   // Reload fresh data from stores on mount
   useEffect(() => {
@@ -74,6 +150,11 @@ export default function MembershipList() {
     setDistricts(getStoredDistricts());
     setTaluks(getStoredTaluks());
     setPostalCodes(getStoredPostalCodes());
+    setPaymentModes(getActivePaymentModes());
+
+    const handleModesChanged = () => setPaymentModes(getActivePaymentModes());
+    window.addEventListener('hms_payment_modes_updated', handleModesChanged);
+    return () => window.removeEventListener('hms_payment_modes_updated', handleModesChanged);
   }, []);
 
   const persistMembers = (updated) => {
@@ -100,7 +181,7 @@ export default function MembershipList() {
   const [districtFilter, setDistrictFilter] = useState('ALL');
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(25);
 
   // Row Selection (Set of Selected Members)
   const [selectedMemberIds, setSelectedMemberIds] = useState(new Set());
@@ -113,53 +194,66 @@ export default function MembershipList() {
   const [formModalMode, setFormModalMode] = useState('add'); // 'add' | 'edit'
   const [editingMember, setEditingMember] = useState(null);
 
-  // Form tab inside Add/Edit modal: 'personal' | 'location' | 'membership' | 'additional'
-  const [activeFormSection, setActiveFormSection] = useState('personal');
+  // Form tab inside Add/Edit modal: 'membershipDetails' | 'paymentInfo'
+  const [activeFormSection, setActiveFormSection] = useState('membershipDetails');
+  const fileInputRef = useRef(null);
 
   const initialFormState = {
-    // Basic Details
-    name: '',
-    address: '',
-    remarks: '',
-    phone: '',
-    mobile: '',
-    email: '',
-
-    // Location Details
-    country: 'India',
-    stateId: 'ST-01',
-    stateName: 'Karnataka',
-    districtId: '',
-    districtName: '',
-    postalCode: '',
-    post: '',
-    city: '',
-    area: '',
-    place: '',
-    grama: '',
-    village: '',
-    labelPoint: '',
-
-    // Membership Details
+    // Top dropdowns
+    membershipTypeCategory: 'Only Havyaka Mahasabha Membership',
     membershipTypeId: '',
     membershipType: '',
-    category: 'Individual',
-    profession: '',
-    company: '',
 
-    // Additional Member Details
-    website: '',
-    gothra: 'Vishwamitra',
-    bloodGroup: 'O+',
+    // Photo
+    photoUrl: '',
+
+    // Personal / Basic Info
+    name: '',
+    fatherHusbandName: '',
+    mobileCountryCode: '+91',
+    mobileCountryIso: 'IN',
+    mobile: '',
+    whatsappCountryCode: '+91',
+    whatsappCountryIso: 'IN',
+    whatsappNumber: '',
+    email: '',
     birthDate: '',
-    status: 'Active',
-    expireDate: '',
-    magazineRemarks: '',
-    nativeDetails: ''
+    age: '',
+
+    // Details Grid
+    gothra: '',
+    gender: '',
+    bloodGroup: '',
+    aadharNumber: '',
+    address: '',
+    postalCode: '',
+    nativePlace: '',
+    appliedOnBehalfOf: 'Self',
+    qualification: '',
+    employment: '',
+    magazineNeeded: 'YES',
+
+    // Referred By
+    referredMembershipNo: '',
+    referredMembershipName: '',
+
+    // Family Membership Details
+    familyMembershipNo: '',
+    familyMembershipName: '',
+
+    // Payment Information
+    paymentMode: 'Cash',
+    bankAccount: '',
+    amount: '',
+    receiptDate: new Date().toISOString().split('T')[0],
+    transactionId: '',
+    transactionDate: '',
+    paymentRemarks: ''
   };
 
   const [formData, setFormData] = useState(initialFormState);
   const [formErrors, setFormErrors] = useState({});
+  const [isWhatsAppSameAsMobile, setIsWhatsAppSameAsMobile] = useState(false);
 
   // 2. View Member Details Modal
   const [viewingMember, setViewingMember] = useState(null);
@@ -208,8 +302,9 @@ export default function MembershipList() {
         const memberNo = (m.membershipNumber || m.id || '').toLowerCase();
         const mobile = (m.mobile || m.mobileNumber || '').toLowerCase();
         const email = (m.email || '').toLowerCase();
-        const city = (m.city || m.place || m.talukName || '').toLowerCase();
-        const district = (m.districtName || '').toLowerCase();
+        const pinLookup = m.postalCode ? lookupLocationByPin(m.postalCode) : null;
+        const city = (m.city || m.place || m.talukName || m.taluk || m.locality || (pinLookup?.found ? pinLookup.talukName : '') || '').toLowerCase();
+        const district = (m.districtName || m.district || (pinLookup?.found ? pinLookup.districtName : '') || '').toLowerCase();
         const pin = (m.postalCode || '').toLowerCase();
 
         if (
@@ -244,12 +339,16 @@ export default function MembershipList() {
 
       // State Filter
       if (stateFilter !== 'ALL') {
-        if ((m.stateName || '').toLowerCase() !== stateFilter.toLowerCase()) return false;
+        const pinLookup = m.postalCode ? lookupLocationByPin(m.postalCode) : null;
+        const memberState = (m.stateName || m.state || (pinLookup?.found ? pinLookup.stateName : '') || '').toLowerCase();
+        if (memberState !== stateFilter.toLowerCase()) return false;
       }
 
       // District Filter
       if (districtFilter !== 'ALL') {
-        if ((m.districtName || '').toLowerCase() !== districtFilter.toLowerCase()) return false;
+        const pinLookup = m.postalCode ? lookupLocationByPin(m.postalCode) : null;
+        const memberDistrict = (m.districtName || m.district || (pinLookup?.found ? pinLookup.districtName : '') || '').toLowerCase();
+        if (memberDistrict !== districtFilter.toLowerCase()) return false;
       }
 
       return true;
@@ -362,121 +461,295 @@ export default function MembershipList() {
     }
   };
 
+  // Helper to compute age from Date of Birth
+  const calculateAge = (dob) => {
+    if (!dob) return '';
+    const iso = toISODate(dob) || dob;
+    const birth = new Date(iso);
+    const now = new Date();
+    if (isNaN(birth.getTime())) return '';
+    let years = now.getFullYear() - birth.getFullYear();
+    const m = now.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) {
+      years--;
+    }
+    return years >= 0 ? String(years) : '';
+  };
+
+  const handleDobChange = (e) => {
+    const dob = e.target.value;
+    const age = calculateAge(dob);
+    setFormData((prev) => ({ ...prev, birthDate: dob, age }));
+    if (formErrors.birthDate) {
+      setFormErrors((prev) => ({ ...prev, birthDate: '' }));
+    }
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setFormData((prev) => ({ ...prev, photoUrl: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleMembershipTypeSelect = (typeId) => {
+    const tObj = membershipTypes.find((mt) => mt.id === typeId);
+    const price = tObj?.currentPrice || tObj?.price || tObj?.fee || 1000;
+    setFormData((prev) => ({
+      ...prev,
+      membershipTypeId: typeId,
+      membershipType: tObj ? tObj.name : '',
+      amount: prev.amount ? prev.amount : String(price)
+    }));
+    if (formErrors.membershipTypeId) {
+      setFormErrors((prev) => ({ ...prev, membershipTypeId: '' }));
+    }
+  };
+
   // ----------------------------------------------------
   // ADD / EDIT FORM HANDLERS
   // ----------------------------------------------------
   const handleOpenAddModal = () => {
     setFormModalMode('add');
     setEditingMember(null);
-    setActiveFormSection('personal');
+    setActiveFormSection('membershipDetails');
 
     const firstActiveType = activeMembershipTypes[0];
-    const firstActiveState = states.find((s) => s.status === 'Active') || states[0];
-    const matchDists = districts.filter((d) => d.stateId === firstActiveState?.id && d.status === 'Active');
-    const firstDist = matchDists[0];
+    const defaultPrice = firstActiveType?.currentPrice || firstActiveType?.price || 1000;
 
     setFormData({
       ...initialFormState,
-      stateId: firstActiveState ? firstActiveState.id : 'ST-01',
-      stateName: firstActiveState ? firstActiveState.name : 'Karnataka',
-      districtId: firstDist ? firstDist.id : '',
-      districtName: firstDist ? firstDist.name : '',
       membershipTypeId: firstActiveType ? firstActiveType.id : '',
-      membershipType: firstActiveType ? firstActiveType.name : ''
+      membershipType: firstActiveType ? firstActiveType.name : '',
+      amount: String(defaultPrice),
+      gothra: gothras[0] || 'Vishwamitra',
+      appliedOnBehalfOf: 'Self',
+      magazineNeeded: 'YES'
     });
     setFormErrors({});
     setIsFormModalOpen(true);
   };
 
-  // Open modal if navigated with openAddModal state or via register/add path
-  useEffect(() => {
-    if (
-      location.state?.openAddModal ||
-      location.pathname.endsWith('/register') ||
-      location.pathname.endsWith('/add')
-    ) {
-      handleOpenAddModal();
-      // Clean up state history so refresh doesn't force modal reopen
-      window.history.replaceState({}, document.title);
-    }
-  }, [location.state, location.pathname]);
-
   const handleOpenEditModal = (member) => {
     setFormModalMode('edit');
     setEditingMember(member);
-    setActiveFormSection('personal');
+    setActiveFormSection('membershipDetails');
+
+    const matchedType = membershipTypes.find(
+      (mt) => mt.id === member.membershipTypeId || mt.name === member.membershipType
+    );
 
     setFormData({
+      membershipTypeCategory: member.membershipTypeCategory || 'Only Havyaka Mahasabha Membership',
+      membershipTypeId: matchedType ? matchedType.id : member.membershipTypeId || '',
+      membershipType: matchedType ? matchedType.name : member.membershipType || '',
+
+      photoUrl: member.photoUrl || '',
+
       name: member.fullName || member.name || '',
-      address: member.addressLine || member.address || '',
-      remarks: member.remarks || '',
-      phone: member.phone || '',
-      mobile: member.mobile || member.mobileNumber || '',
+      fatherHusbandName: member.fatherHusbandName || '',
+      mobileCountryCode: member.mobileCountryCode || member.countryCode || member.phone_country_code || '+91',
+      mobileCountryIso: member.mobileCountryIso || member.countryIso || 'IN',
+      mobile: member.mobile || member.mobileNumber || member.phone_number || '',
+      whatsappCountryCode: member.whatsappCountryCode || member.whatsapp_country_code || '+91',
+      whatsappCountryIso: member.whatsappCountryIso || 'IN',
+      whatsappNumber: member.whatsappNumber || member.whatsapp_number || (member.isWhatsAppSameAsMobile ? (member.mobile || member.mobileNumber || '') : ''),
       email: member.email || '',
-
-      country: member.country || 'India',
-      stateId: member.stateId || 'ST-01',
-      stateName: member.stateName || 'Karnataka',
-      districtId: member.districtId || '',
-      districtName: member.districtName || '',
-      postalCode: member.postalCode || '',
-      post: member.post || member.talukName || '',
-      city: member.city || member.place || '',
-      area: member.area || '',
-      place: member.place || '',
-      grama: member.grama || '',
-      village: member.village || '',
-      labelPoint: member.labelPoint || '',
-
-      membershipTypeId: member.membershipTypeId || '',
-      membershipType: member.membershipType || '',
-      category: member.category || 'Individual',
-      profession: member.profession || '',
-      company: member.company || '',
-
-      website: member.website || '',
-      gothra: member.gothra || 'Vishwamitra',
-      bloodGroup: member.bloodGroup || 'O+',
       birthDate: member.birthDate || '',
-      status: member.status === 'Approved' ? 'Active' : member.status || 'Active',
-      expireDate: member.expireDate || '',
-      magazineRemarks: member.magazineRemarks || '',
-      nativeDetails: member.nativeDetails || ''
+      age: member.age || calculateAge(member.birthDate),
+
+      gothra: member.gothra || '',
+      gender: member.gender || 'Male',
+      bloodGroup: member.bloodGroup || '',
+      aadharNumber: member.aadharNumber || '',
+      address: member.addressLine || member.address || '',
+      postalCode: member.postalCode || '',
+      nativePlace: member.nativePlace || member.nativeDetails || '',
+      appliedOnBehalfOf: member.appliedOnBehalfOf || 'Self',
+      qualification: member.qualification || '',
+      employment: member.employment || member.profession || '',
+      magazineNeeded: member.magazineNeeded || (member.magazineRemarks?.toLowerCase().includes('no') ? 'NO' : 'YES'),
+
+      referredMembershipNo: member.referredMembershipNo || '',
+      referredMembershipName: member.referredMembershipName || '',
+      familyMembershipNo: member.familyMembershipNo || '',
+      familyMembershipName: member.familyMembershipName || '',
+
+      paymentMode: member.paymentMode || 'Cash',
+      bankAccount: member.bankAccount || '',
+      amount: String(member.amount || matchedType?.currentPrice || 1000),
+      receiptDate: member.receiptDate || new Date().toISOString().split('T')[0],
+      transactionId: member.transactionId || '',
+      transactionDate: member.transactionDate || '',
+      paymentRemarks: member.paymentRemarks || member.remarks || ''
     });
     setFormErrors({});
+    setIsWhatsAppSameAsMobile(
+      Boolean(member.isWhatsAppSameAsMobile) ||
+      (Boolean(member.mobile) && (member.mobile === member.whatsappNumber || member.mobile === member.whatsapp_number))
+    );
     setIsFormModalOpen(true);
+  };
+
+  const handleMobileCountryChange = ({ dialCode, countryIso }) => {
+    setFormData((prev) => ({
+      ...prev,
+      mobileCountryCode: dialCode,
+      mobileCountryIso: countryIso,
+      ...(isWhatsAppSameAsMobile ? { whatsappCountryCode: dialCode, whatsappCountryIso: countryIso } : {})
+    }));
+    if (formErrors.mobile) {
+      setFormErrors((prev) => ({ ...prev, mobile: '' }));
+    }
+  };
+
+  const handleWhatsAppCountryChange = ({ dialCode, countryIso }) => {
+    setFormData((prev) => ({
+      ...prev,
+      whatsappCountryCode: dialCode,
+      whatsappCountryIso: countryIso
+    }));
+    if (formErrors.whatsappNumber) {
+      setFormErrors((prev) => ({ ...prev, whatsappNumber: '' }));
+    }
+  };
+
+  const handleMobileChange = (val) => {
+    let cleanVal = val.replace(/[^\d]/g, '');
+    const dialDigits = (formData.mobileCountryCode || '').replace(/\D/g, '');
+    if (dialDigits && cleanVal.startsWith(dialDigits) && cleanVal.length > dialDigits.length + 5) {
+      cleanVal = cleanVal.slice(dialDigits.length);
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      mobile: cleanVal,
+      ...(isWhatsAppSameAsMobile ? { whatsappNumber: cleanVal } : {})
+    }));
+    if (formErrors.mobile) setFormErrors((prev) => ({ ...prev, mobile: '' }));
+    if (isWhatsAppSameAsMobile && formErrors.whatsappNumber) {
+      setFormErrors((prev) => ({ ...prev, whatsappNumber: '' }));
+    }
+  };
+
+  const handleWhatsAppChange = (val) => {
+    let cleanVal = val.replace(/[^\d]/g, '');
+    const dialDigits = (formData.whatsappCountryCode || '').replace(/\D/g, '');
+    if (dialDigits && cleanVal.startsWith(dialDigits) && cleanVal.length > dialDigits.length + 5) {
+      cleanVal = cleanVal.slice(dialDigits.length);
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      whatsappNumber: cleanVal
+    }));
+    if (formErrors.whatsappNumber) setFormErrors((prev) => ({ ...prev, whatsappNumber: '' }));
+  };
+
+  const handleWhatsAppSameAsMobileToggle = (checked) => {
+    setIsWhatsAppSameAsMobile(checked);
+    setFormData((prev) => ({
+      ...prev,
+      whatsappCountryCode: checked ? prev.mobileCountryCode : prev.whatsappCountryCode,
+      whatsappCountryIso: checked ? prev.mobileCountryIso : prev.whatsappCountryIso,
+      whatsappNumber: checked ? prev.mobile : ''
+    }));
+    if (formErrors.whatsappNumber) {
+      setFormErrors((prev) => ({ ...prev, whatsappNumber: '' }));
+    }
   };
 
   const validateForm = () => {
     const errors = {};
     const cleanName = formData.name.trim();
-    const cleanMobile = formData.mobile.trim();
+    const cleanFather = formData.fatherHusbandName.trim();
+    const cleanEmail = formData.email.trim();
+    const cleanAadhar = formData.aadharNumber.trim();
     const cleanAddress = formData.address.trim();
+    const cleanPin = formData.postalCode.trim();
 
-    if (!cleanName) {
-      errors.name = 'Full Name is required';
+    if (!formData.membershipTypeId) {
+      errors.membershipTypeId = 'Please select a Havyaka Membership Type';
     }
 
-    if (!cleanMobile) {
-      errors.mobile = 'Mobile number is required';
-    } else if (!/^\d{10}$/.test(cleanMobile)) {
-      errors.mobile = 'Mobile must be a valid 10-digit number';
+    if (!cleanName) {
+      errors.name = 'New Member Name is required';
+    }
+
+    if (!cleanFather) {
+      errors.fatherHusbandName = 'Father / Husband Name is required';
+    }
+
+    // International Mobile Validation
+    const mobileValidation = validateInternationalPhone(
+      formData.mobile,
+      formData.mobileCountryIso || 'IN',
+      formData.mobileCountryCode || '+91'
+    );
+    if (!mobileValidation.isValid) {
+      errors.mobile = mobileValidation.errorMsg;
+    }
+
+    // International WhatsApp Validation (optional unless non-empty)
+    if (formData.whatsappNumber && formData.whatsappNumber.trim()) {
+      const whatsappValidation = validateInternationalPhone(
+        formData.whatsappNumber,
+        formData.whatsappCountryIso || 'IN',
+        formData.whatsappCountryCode || '+91'
+      );
+      if (!whatsappValidation.isValid) {
+        errors.whatsappNumber = whatsappValidation.errorMsg;
+      }
+    }
+
+    if (!cleanEmail) {
+      errors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.email = 'Please enter a valid email address';
+    }
+
+    if (!formData.birthDate) {
+      errors.birthDate = 'Date of Birth is required';
+    }
+
+    if (!formData.gothra) {
+      errors.gothra = 'Please select Gotra';
+    }
+
+    if (!formData.gender) {
+      errors.gender = 'Please select Gender';
+    }
+
+    if (!cleanAadhar) {
+      errors.aadharNumber = 'Aadhar Number is required';
+    } else if (!/^\d{12}$/.test(cleanAadhar.replace(/\s/g, ''))) {
+      errors.aadharNumber = 'Aadhar must be a 12-digit number';
     }
 
     if (!cleanAddress) {
-      errors.address = 'Address is required';
+      errors.address = 'Communication Address is required';
     }
 
-    if (!formData.membershipTypeId) {
-      errors.membershipTypeId = 'Please select a Membership Type';
-    }
-
-    if (formData.postalCode && !/^\d{6}$/.test(formData.postalCode.trim())) {
+    if (!cleanPin) {
+      errors.postalCode = 'PIN Code is required';
+    } else if (!/^\d{6}$/.test(cleanPin)) {
       errors.postalCode = 'PIN Code must be 6 numeric digits';
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      errors.email = 'Please enter a valid email address';
+    if (!formData.appliedOnBehalfOf) {
+      errors.appliedOnBehalfOf = 'Please select applying behalf';
+    }
+
+    if (!formData.qualification) {
+      errors.qualification = 'Please select Qualification';
+    }
+
+    if (!formData.magazineNeeded) {
+      errors.magazineNeeded = 'Please select YES/NO for Magazine';
     }
 
     setFormErrors(errors);
@@ -486,13 +759,15 @@ export default function MembershipList() {
   const handleSaveMember = (e) => {
     e.preventDefault();
     if (!validateForm()) {
-      showToast('Please fix the validation errors in the form.', 'error');
+      showToast('Please fix the required fields marked with *.', 'error');
+      // If errors are on membership details tab, switch to it
+      setActiveFormSection('membershipDetails');
       return;
     }
 
     const selectedTypeObj = membershipTypes.find((mt) => mt.id === formData.membershipTypeId);
-    const selectedStateObj = states.find((s) => s.id === formData.stateId);
-    const selectedDistObj = districts.find((d) => d.id === formData.districtId);
+
+    const pinLoc = lookupLocationByPin(formData.postalCode.trim());
 
     if (formModalMode === 'add') {
       const nextNum = (members.length + 101).toString();
@@ -501,45 +776,59 @@ export default function MembershipList() {
         membershipNumber: nextNum,
         fullName: formData.name.trim(),
         name: formData.name.trim(),
+        fatherHusbandName: formData.fatherHusbandName.trim(),
         membershipName: formData.name.trim(),
         addressLine: formData.address.trim(),
         address: formData.address.trim(),
-        remarks: formData.remarks.trim(),
-        phone: formData.phone.trim(),
         mobile: formData.mobile.trim(),
         mobileNumber: formData.mobile.trim(),
         email: formData.email.trim(),
-
-        country: formData.country,
-        stateId: selectedStateObj ? selectedStateObj.id : 'ST-01',
-        stateName: selectedStateObj ? selectedStateObj.name : 'Karnataka',
-        districtId: selectedDistObj ? selectedDistObj.id : '',
-        districtName: selectedDistObj ? selectedDistObj.name : '',
-        talukName: formData.post || formData.place || (selectedDistObj ? selectedDistObj.name : ''),
-        postalCode: formData.postalCode.trim(),
-        post: formData.post.trim(),
-        city: formData.city.trim(),
-        area: formData.area.trim(),
-        place: formData.place.trim(),
-        grama: formData.grama.trim(),
-        village: formData.village.trim(),
-        labelPoint: formData.labelPoint.trim(),
-
-        membershipTypeId: selectedTypeObj ? selectedTypeObj.id : '',
-        membershipType: selectedTypeObj ? selectedTypeObj.name : formData.membershipType,
-        amount: selectedTypeObj?.currentPrice || 1000,
-        category: formData.category,
-        profession: formData.profession.trim(),
-        company: formData.company.trim(),
-
-        website: formData.website.trim(),
-        gothra: formData.gothra,
-        bloodGroup: formData.bloodGroup,
         birthDate: formData.birthDate,
-        status: formData.status,
-        expireDate: formData.expireDate,
-        magazineRemarks: formData.magazineRemarks.trim(),
-        nativeDetails: formData.nativeDetails.trim(),
+        age: formData.age || calculateAge(formData.birthDate),
+        photoUrl: formData.photoUrl,
+
+        gothra: formData.gothra,
+        gender: formData.gender,
+        bloodGroup: formData.bloodGroup,
+        aadharNumber: formData.aadharNumber.trim(),
+        postalCode: formData.postalCode.trim(),
+        locality: pinLoc.found ? pinLoc.area : '',
+        postOffice: pinLoc.found ? pinLoc.area : '',
+        place: pinLoc.found ? (pinLoc.area || pinLoc.talukName) : '',
+        city: pinLoc.found ? (pinLoc.area || pinLoc.talukName) : '',
+        taluk: pinLoc.found ? pinLoc.talukName : '',
+        talukName: pinLoc.found ? pinLoc.talukName : '',
+        district: pinLoc.found ? pinLoc.districtName : '',
+        districtName: pinLoc.found ? pinLoc.districtName : '',
+        state: pinLoc.found ? (pinLoc.stateName || 'Karnataka') : 'Karnataka',
+        stateName: pinLoc.found ? (pinLoc.stateName || 'Karnataka') : 'Karnataka',
+        nativePlace: formData.nativePlace.trim(),
+        nativeDetails: formData.nativePlace.trim(),
+        appliedOnBehalfOf: formData.appliedOnBehalfOf,
+        qualification: formData.qualification,
+        employment: formData.employment.trim(),
+        profession: formData.employment.trim(),
+        magazineNeeded: formData.magazineNeeded,
+        magazineRemarks: formData.magazineNeeded === 'YES' ? 'Monthly Magazine' : 'No Magazine',
+
+        membershipTypeCategory: formData.membershipTypeCategory,
+        membershipTypeId: selectedTypeObj ? selectedTypeObj.id : formData.membershipTypeId,
+        membershipType: selectedTypeObj ? selectedTypeObj.name : formData.membershipType,
+        amount: Number(formData.amount) || selectedTypeObj?.currentPrice || 1000,
+
+        referredMembershipNo: formData.referredMembershipNo.trim(),
+        referredMembershipName: formData.referredMembershipName.trim(),
+        familyMembershipNo: formData.familyMembershipNo.trim(),
+        familyMembershipName: formData.familyMembershipName.trim(),
+
+        paymentMode: formData.paymentMode,
+        bankAccount: formData.bankAccount,
+        receiptDate: formData.receiptDate,
+        transactionId: formData.transactionId.trim(),
+        transactionDate: formData.transactionDate,
+        paymentRemarks: formData.paymentRemarks.trim(),
+
+        status: 'Active',
         createdDate: new Date().toISOString().split('T')[0],
         registrationType: 'Offline'
       };
@@ -553,44 +842,74 @@ export default function MembershipList() {
             ...m,
             fullName: formData.name.trim(),
             name: formData.name.trim(),
+            fatherHusbandName: formData.fatherHusbandName.trim(),
             membershipName: formData.name.trim(),
             addressLine: formData.address.trim(),
             address: formData.address.trim(),
-            remarks: formData.remarks.trim(),
-            phone: formData.phone.trim(),
+            countryCode: formData.mobileCountryCode,
+            countryIso: formData.mobileCountryIso,
+            mobileCountryCode: formData.mobileCountryCode,
+            mobileCountryIso: formData.mobileCountryIso,
             mobile: formData.mobile.trim(),
             mobileNumber: formData.mobile.trim(),
+            phone_country_code: formData.mobileCountryCode,
+            phone_number: formData.mobile.trim(),
+            phoneNumber: formData.mobile.trim(),
+            fullMobile: `${formData.mobileCountryCode} ${formData.mobile.trim()}`,
+
+            whatsappCountryCode: formData.whatsappCountryCode,
+            whatsappCountryIso: formData.whatsappCountryIso,
+            whatsappNumber: (formData.whatsappNumber || '').trim(),
+            whatsapp_country_code: formData.whatsappCountryCode,
+            whatsapp_number: (formData.whatsappNumber || '').trim(),
+            whatsAppNumber: (formData.whatsappNumber || '').trim(),
+            fullWhatsApp: formData.whatsappNumber.trim() ? `${formData.whatsappCountryCode} ${formData.whatsappNumber.trim()}` : '',
+            isWhatsAppSameAsMobile: isWhatsAppSameAsMobile,
             email: formData.email.trim(),
+            birthDate: formData.birthDate,
+            age: formData.age || calculateAge(formData.birthDate),
+            photoUrl: formData.photoUrl || m.photoUrl,
 
-            country: formData.country,
-            stateId: selectedStateObj ? selectedStateObj.id : m.stateId,
-            stateName: selectedStateObj ? selectedStateObj.name : m.stateName,
-            districtId: selectedDistObj ? selectedDistObj.id : m.districtId,
-            districtName: selectedDistObj ? selectedDistObj.name : m.districtName,
-            talukName: formData.post || formData.place || m.talukName,
+            gothra: formData.gothra,
+            gender: formData.gender,
+            bloodGroup: formData.bloodGroup,
+            aadharNumber: formData.aadharNumber.trim(),
             postalCode: formData.postalCode.trim(),
-            post: formData.post.trim(),
-            city: formData.city.trim(),
-            area: formData.area.trim(),
-            place: formData.place.trim(),
-            grama: formData.grama.trim(),
-            village: formData.village.trim(),
-            labelPoint: formData.labelPoint.trim(),
+            locality: pinLoc.found ? pinLoc.area : (m.locality || ''),
+            postOffice: pinLoc.found ? pinLoc.area : (m.postOffice || ''),
+            place: pinLoc.found ? (pinLoc.area || pinLoc.talukName) : (m.place || ''),
+            city: pinLoc.found ? (pinLoc.area || pinLoc.talukName) : (m.city || ''),
+            taluk: pinLoc.found ? pinLoc.talukName : (m.taluk || ''),
+            talukName: pinLoc.found ? pinLoc.talukName : (m.talukName || ''),
+            district: pinLoc.found ? pinLoc.districtName : (m.district || ''),
+            districtName: pinLoc.found ? pinLoc.districtName : (m.districtName || ''),
+            state: pinLoc.found ? (pinLoc.stateName || 'Karnataka') : (m.state || 'Karnataka'),
+            stateName: pinLoc.found ? (pinLoc.stateName || 'Karnataka') : (m.stateName || 'Karnataka'),
+            nativePlace: formData.nativePlace.trim(),
+            nativeDetails: formData.nativePlace.trim(),
+            appliedOnBehalfOf: formData.appliedOnBehalfOf,
+            qualification: formData.qualification,
+            employment: formData.employment.trim(),
+            profession: formData.employment.trim(),
+            magazineNeeded: formData.magazineNeeded,
+            magazineRemarks: formData.magazineNeeded === 'YES' ? 'Monthly Magazine' : 'No Magazine',
 
+            membershipTypeCategory: formData.membershipTypeCategory,
             membershipTypeId: selectedTypeObj ? selectedTypeObj.id : m.membershipTypeId,
             membershipType: selectedTypeObj ? selectedTypeObj.name : m.membershipType,
-            category: formData.category,
-            profession: formData.profession.trim(),
-            company: formData.company.trim(),
+            amount: Number(formData.amount) || m.amount,
 
-            website: formData.website.trim(),
-            gothra: formData.gothra,
-            bloodGroup: formData.bloodGroup,
-            birthDate: formData.birthDate,
-            status: formData.status,
-            expireDate: formData.expireDate,
-            magazineRemarks: formData.magazineRemarks.trim(),
-            nativeDetails: formData.nativeDetails.trim()
+            referredMembershipNo: formData.referredMembershipNo.trim(),
+            referredMembershipName: formData.referredMembershipName.trim(),
+            familyMembershipNo: formData.familyMembershipNo.trim(),
+            familyMembershipName: formData.familyMembershipName.trim(),
+
+            paymentMode: formData.paymentMode,
+            bankAccount: formData.bankAccount,
+            receiptDate: formData.receiptDate,
+            transactionId: formData.transactionId.trim(),
+            transactionDate: formData.transactionDate,
+            paymentRemarks: formData.paymentRemarks.trim()
           }
           : m
       );
@@ -676,7 +995,7 @@ export default function MembershipList() {
         rightSlot={
           <button
             type="button"
-            onClick={handleOpenAddModal}
+            onClick={() => navigate('/dashboard/membership/register')}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#510601] hover:bg-[#863221] text-white text-xs sm:text-sm font-bold rounded-xl transition-all shadow-sm cursor-pointer hover:shadow-md shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -752,28 +1071,17 @@ export default function MembershipList() {
           <table className="w-full text-left border-collapse text-xs">
             <thead className="bg-[#FAF7F2] border-b border-[#E8DFD8] text-[#863221] font-bold uppercase tracking-wider text-[11px]">
               <tr>
-                <th className="py-3 px-4 w-10 text-center">
-                  <input
-                    type="checkbox"
-                    checked={isAllPaginatedSelected}
-                    onChange={handleToggleSelectAll}
-                    className="w-4 h-4 rounded border-[#E8DFD8] text-[#510601] focus:ring-[#510601] cursor-pointer accent-[#510601]"
-                    title="Select All on page"
-                  />
-                </th>
                 <th className="py-3 px-4">Membership No. & Name</th>
-                <th className="py-3 px-4">Contact (Mobile & Email)</th>
+                <th className="py-3 px-4">Contact Number</th>
                 <th className="py-3 px-4">Membership Type</th>
-                <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4">District / Location</th>
-                <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E8DFD8]">
               {paginatedMembers.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-[#863221]">
+                  <td colSpan="5" className="py-12 text-center text-[#863221]">
                     <div className="flex flex-col items-center justify-center">
                       <AlertCircle className="w-8 h-8 text-[#863221]/40 mb-2" />
                       <p className="font-semibold text-sm text-[#180200]">No members found</p>
@@ -791,19 +1099,8 @@ export default function MembershipList() {
                   return (
                     <tr
                       key={m.id}
-                      className={`transition-colors ${isSelected ? 'bg-[#FAF7F2]/80' : 'hover:bg-[#FAF7F2]/40'
-                        }`}
+                      className="hover:bg-[#FAF7F2]/40 transition-colors"
                     >
-                      {/* Checkbox */}
-                      <td className="py-3 px-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelectRow(m.id)}
-                          className="w-4 h-4 rounded border-[#E8DFD8] text-[#510601] focus:ring-[#510601] cursor-pointer accent-[#510601]"
-                        />
-                      </td>
-
                       {/* Membership No. & Name */}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -829,13 +1126,11 @@ export default function MembershipList() {
                           <Phone className="w-3 h-3 text-[#863221]/70 shrink-0" />
                           <span>{m.mobile || m.mobileNumber || '—'}</span>
                         </div>
-                        {m.email ? (
+                        {m.email && (
                           <div className="flex items-center gap-1.5 text-[11px] text-[#863221] mt-0.5 truncate max-w-[180px]">
                             <Mail className="w-3 h-3 text-[#863221]/70 shrink-0" />
                             <span className="truncate">{m.email}</span>
                           </div>
-                        ) : (
-                          <div className="text-[11px] text-stone-400 mt-0.5">No email</div>
                         )}
                       </td>
 
@@ -843,71 +1138,61 @@ export default function MembershipList() {
                       <td className="py-3 px-4">
                         {(() => {
                           const memStatus = calculateMemberMembershipStatus(m, receipts, membershipTypes);
-                          if (memStatus.isMilestoneReached) {
-                            return (
-                              <div className="space-y-0.5">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#510601]/10 text-[#510601] border border-[#510601]/20">
-                                  <Award className="w-3.5 h-3.5 shrink-0" />
-                                  <span>{memStatus.currentMembershipType}</span>
-                                </span>
-                                <div className="text-[10px] text-[#863221] font-mono font-medium">
-                                  Paid: ₹{memStatus.totalMembershipPaid.toLocaleString('en-IN')}
-                                </div>
-                              </div>
-                            );
-                          }
+                          const membershipTypeName = memStatus.currentMembershipType || m.membershipType || m.type || 'Poshaka';
                           return (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                                <span>Not Yet Reached</span>
-                              </span>
-                              <div className="text-[10px] text-[#863221] font-mono">
-                                Paid: ₹{memStatus.totalMembershipPaid.toLocaleString('en-IN')}
-                              </div>
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#510601]/10 text-[#510601] border border-[#510601]/20">
+                              <Award className="w-3.5 h-3.5 shrink-0" />
+                              <span>{membershipTypeName}</span>
+                            </span>
                           );
                         })()}
                       </td>
 
-                      {/* Category */}
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-[#FAF7F2] text-[#863221] border border-[#E8DFD8]">
-                          {m.category || 'Individual'}
-                        </span>
-                      </td>
-
                       {/* District / Location */}
                       <td className="py-3 px-4 text-[#863221]">
-                        <div className="font-medium text-[#180200] text-xs">
-                          {m.districtName || m.stateName || '—'}
-                        </div>
-                        <div className="text-[11px] text-[#863221]/80 mt-0.5 truncate max-w-[160px]">
-                          {m.city || m.place || m.talukName || ''} {m.postalCode ? `(${m.postalCode})` : ''}
-                        </div>
-                      </td>
+                        {(() => {
+                          const pinLookup = m.postalCode ? lookupLocationByPin(m.postalCode) : null;
+                          const districtText =
+                            m.districtName ||
+                            m.district ||
+                            (pinLookup?.found ? pinLookup.districtName : '') ||
+                            m.stateName ||
+                            m.state ||
+                            '—';
+                          const talukText =
+                            m.talukName ||
+                            m.taluk ||
+                            (pinLookup?.found ? pinLookup.talukName : '');
+                          const localityText =
+                            m.locality ||
+                            m.city ||
+                            m.place ||
+                            (pinLookup?.found ? pinLookup.area : '');
 
-                      {/* Status Toggle Button */}
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setStatusDialog({
-                              member: m,
-                              nextStatus: displayStatus === 'Active' ? 'Inactive' : 'Active'
-                            })
+                          const locationParts = [];
+                          if (localityText && localityText !== talukText && localityText !== districtText) {
+                            locationParts.push(localityText);
                           }
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${displayStatus === 'Active'
-                            ? 'bg-[#3D705C]/10 text-[#3D705C] hover:bg-[#3D705C]/20 border border-[#3D705C]/20'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
-                            }`}
-                          title={`Click to ${displayStatus === 'Active' ? 'deactivate' : 'activate'}`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${displayStatus === 'Active' ? 'bg-[#3D705C]' : 'bg-gray-400'
-                              }`}
-                          />
-                          <span>{displayStatus}</span>
-                        </button>
+                          if (talukText && talukText !== districtText && !locationParts.includes(talukText)) {
+                            locationParts.push(talukText);
+                          }
+                          const locationSubText = locationParts.join(', ') || talukText || localityText || '';
+
+                          return (
+                            <>
+                              <div className="font-medium text-[#180200] text-xs">
+                                {districtText}
+                              </div>
+                              <div
+                                className="text-[11px] text-[#863221]/80 mt-0.5 truncate max-w-[180px]"
+                                title={`${locationSubText} ${m.postalCode ? `(${m.postalCode})` : ''}`.trim()}
+                              >
+                                {locationSubText ? `${locationSubText} ` : ''}
+                                {m.postalCode ? `(${m.postalCode})` : ''}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </td>
 
                       {/* Action Buttons: View, Edit, Delete */}
@@ -923,7 +1208,16 @@ export default function MembershipList() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleOpenEditModal(m)}
+                            onClick={() =>
+                              navigate('/dashboard/membership/edit', {
+                                state: {
+                                  member: m,
+                                  membershipNumber: m.membershipNumber,
+                                  mode: 'edit',
+                                  returnPath: '/dashboard/membership/list'
+                                }
+                              })
+                            }
                             className="p-1.5 text-amber-700 hover:text-amber-900 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                             title="Edit Member"
                           >
@@ -1013,544 +1307,367 @@ export default function MembershipList() {
       {/* ==================================================== */}
       <Modal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)}>
         <div
-          className="bg-white rounded-2xl max-w-3xl w-full border border-[#E8DFD8] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+          className="bg-white rounded-lg max-w-4xl w-full border border-[#E8DFD8] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Modal Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8DFD8] bg-[#FAF7F2]">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-[#510601]/10 text-[#510601]">
-                <UserCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#180200]">
-                  {formModalMode === 'add' ? 'Register New Membership' : 'Edit Member Profile'}
-                </h3>
-                <p className="text-xs text-[#863221]">
-                  {formModalMode === 'add'
-                    ? 'Fill member personal, geographic location, and membership type details.'
-                    : `Editing details for "${editingMember?.fullName || editingMember?.name}"`}
-                </p>
-              </div>
+          {/* Header */}
+          <div className="px-6 pt-5 pb-2">
+            <div className="flex items-center justify-between pb-2 border-b-2 border-[#8C1801]">
+              <h2 className="text-xl font-normal text-[#180200]">
+                {formModalMode === 'add' ? 'New Membership Form' : 'Edit Membership Form'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsFormModalOpen(false)}
+                className="text-[#863221]/60 hover:text-[#180200] p-1 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsFormModalOpen(false)}
-              className="text-[#863221]/60 hover:text-[#180200] p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
 
-          {/* Form Navigation Tabs */}
-          <div className="flex items-center border-b border-[#E8DFD8] px-6 bg-white overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setActiveFormSection('personal')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeFormSection === 'personal'
-                ? 'border-[#510601] text-[#510601]'
-                : 'border-transparent text-[#863221] hover:text-[#180200]'
-                }`}
-            >
-              1. Personal / Basic Details
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFormSection('location')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeFormSection === 'location'
-                ? 'border-[#510601] text-[#510601]'
-                : 'border-transparent text-[#863221] hover:text-[#180200]'
-                }`}
-            >
-              2. Location Details
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFormSection('membership')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeFormSection === 'membership'
-                ? 'border-[#510601] text-[#510601]'
-                : 'border-transparent text-[#863221] hover:text-[#180200]'
-                }`}
-            >
-              3. Membership Details
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFormSection('additional')}
-              className={`py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${activeFormSection === 'additional'
-                ? 'border-[#510601] text-[#510601]'
-                : 'border-transparent text-[#863221] hover:text-[#180200]'
-                }`}
-            >
-              4. Additional Details
-            </button>
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-1.5 mt-3">
+              <button
+                type="button"
+                onClick={() => setActiveFormSection('membershipDetails')}
+                className={`px-4 py-2 text-xs font-semibold rounded-t-md border transition-all cursor-pointer ${activeFormSection === 'membershipDetails'
+                    ? 'bg-[#510601] text-white border-[#510601]'
+                    : 'bg-white text-[#510601] border-[#D1D5DB] hover:bg-[#FAF7F2]'
+                  }`}
+              >
+                Membership Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFormSection('paymentInfo')}
+                className={`px-4 py-2 text-xs font-semibold rounded-t-md border transition-all cursor-pointer ${activeFormSection === 'paymentInfo'
+                    ? 'bg-[#510601] text-white border-[#510601]'
+                    : 'bg-white text-[#510601] border-[#D1D5DB] hover:bg-[#FAF7F2]'
+                  }`}
+              >
+                Payment Information
+              </button>
+            </div>
           </div>
 
           {/* Form Content */}
           <form onSubmit={handleSaveMember}>
-            <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
-              {/* TAB 1: PERSONAL / BASIC DETAILS */}
-              {activeFormSection === 'personal' && (
+            <div className="px-6 py-4 max-h-[75vh] overflow-y-auto space-y-4">
+              {/* TAB 1: MEMBERSHIP DETAILS */}
+              {activeFormSection === 'membershipDetails' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Full Name */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Full Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="e.g. S. N. Hegde, Malathi Bhat"
-                        className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${formErrors.name
-                          ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                          : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                          }`}
-                      />
-                      {formErrors.name && (
-                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          {formErrors.name}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Mobile Number */}
+                  {/* Top Row: Membership Type & Select Havyaka Membership Type */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Mobile Number <span className="text-red-500">*</span>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Membership Type:
                       </label>
-                      <input
-                        type="text"
-                        maxLength={10}
-                        value={formData.mobile}
+                      <select
+                        value={formData.membershipTypeCategory}
                         onChange={(e) =>
-                          setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })
+                          setFormData({ ...formData, membershipTypeCategory: e.target.value })
                         }
-                        placeholder="10-digit mobile number"
-                        className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-mono font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${formErrors.mobile
-                          ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                          : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                          }`}
-                      />
-                      {formErrors.mobile && (
-                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          {formErrors.mobile}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Phone (Landline/Alternative) */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Phone (Alternative / Landline)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        placeholder="e.g. 080-23456789"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601] focus:ring-1 focus:ring-[#510601]"
-                      />
-                    </div>
-
-                    {/* Email */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        placeholder="e.g. member@havyakamahasabha.org"
-                        className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${formErrors.email
-                          ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                          : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                          }`}
-                      />
-                      {formErrors.email && (
-                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          {formErrors.email}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Address Line */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Street Address / House Details <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                        placeholder="e.g. No. 42, Sri Rama Nilaya, 8th Cross, Malleswaram"
-                        className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-medium text-[#180200] placeholder-[#863221]/40 focus:outline-none transition-colors ${formErrors.address
-                          ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                          : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                          }`}
-                      />
-                      {formErrors.address && (
-                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          {formErrors.address}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Remarks */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        General Remarks
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.remarks}
-                        onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                        placeholder="Additional notes about member registration"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601] focus:ring-1 focus:ring-[#510601]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: LOCATION DETAILS (INTEGRATED WITH LOCATION SETUP MASTER) */}
-              {activeFormSection === 'location' && (
-                <div className="space-y-4">
-                  {/* PIN Code Lookup helper alert */}
-                  <div className="bg-[#FAF7F2] p-3 rounded-xl border border-[#E8DFD8] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs text-[#863221]">
-                      <Sparkles className="w-4 h-4 text-[#510601]" />
-                      <span>
-                        Enter 6-digit PIN Code below to automatically resolve State, District, Taluk, and Post Office from Location Setup.
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* PIN Code */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        PIN Code (6 Digits)
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          maxLength={6}
-                          value={formData.postalCode}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            if (val.length === 6) {
-                              setFormData((prev) => ({ ...prev, postalCode: val }));
-                              handlePinCodeLookup(val);
-                            } else {
-                              setFormData((prev) => ({
-                                ...prev,
-                                postalCode: val,
-                                ...(prev.postalCode && prev.postalCode.length === 6 ? {
-                                  districtId: '',
-                                  districtName: '',
-                                  post: '',
-                                  place: '',
-                                  city: '',
-                                  area: ''
-                                } : {})
-                              }));
-                              setFormErrors((prev) => {
-                                if (!prev.postalCode) return prev;
-                                const next = { ...prev };
-                                delete next.postalCode;
-                                return next;
-                              });
-                            }
-                          }}
-                          placeholder="e.g. 576101"
-                          className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-mono font-bold focus:outline-none transition-colors ${
-                            formErrors.postalCode
-                              ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20 text-red-700'
-                              : 'border-[#E8DFD8] text-[#510601] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
-                          }`}
-                        />
-                      </div>
-                      {formErrors.postalCode && (
-                        <p className="text-xs text-red-600 mt-1 font-medium">{formErrors.postalCode}</p>
-                      )}
-                    </div>
-
-                    {/* Country */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Country
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.country}
-                        onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-
-                    {/* State (from Location Setup) */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        State <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        value={formData.stateId}
-                        onChange={(e) => {
-                          const newStateId = e.target.value;
-                          const stObj = states.find((s) => s.id === newStateId);
-                          const matchingDists = districts.filter(
-                            (d) => d.stateId === newStateId && (formModalMode === 'edit' || d.status === 'Active')
-                          );
-                          const firstD = matchingDists[0];
-
-                          setFormData({
-                            ...formData,
-                            stateId: newStateId,
-                            stateName: stObj ? stObj.name : 'Karnataka',
-                            districtId: firstD ? firstD.id : '',
-                            districtName: firstD ? firstD.name : ''
-                          });
-                        }}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       >
-                        {states
-                          .filter((s) => formModalMode === 'edit' || s.status === 'Active')
-                          .map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
+                        <option value="Only Havyaka Mahasabha Membership">
+                          Only Havyaka Mahasabha Membership
+                        </option>
+                        <option value="Havyaka Mahasabha Membership & Mangalya Registration">
+                          Havyaka Mahasabha Membership & Mangalya Registration
+                        </option>
                       </select>
+
                     </div>
 
-                    {/* District (from Location Setup) */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        District
-                      </label>
-                      <select
-                        value={formData.districtId}
-                        onChange={(e) => {
-                          const newDistId = e.target.value;
-                          const distObj = districts.find((d) => d.id === newDistId);
-                          setFormData({
-                            ...formData,
-                            districtId: newDistId,
-                            districtName: distObj ? distObj.name : ''
-                          });
-                        }}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      >
-                        <option value="">-- Select District --</option>
-                        {formDistricts.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Post Office / Taluk */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Post Office / Taluk
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.post}
-                        onChange={(e) => setFormData({ ...formData, post: e.target.value })}
-                        placeholder="e.g. Udupi H.O, Sirsi"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-
-                    {/* City / Place */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        City / Place
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.city}
-                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                        placeholder="e.g. Bengaluru, Mangaluru"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-
-                    {/* Area / Place */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Area / Locality
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.area}
-                        onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                        placeholder="e.g. Malleswaram, Kadri"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-
-                    {/* Grama / Village */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Grama / Village
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.grama}
-                        onChange={(e) => setFormData({ ...formData, grama: e.target.value })}
-                        placeholder="e.g. Halasinakatte, Hegde"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-
-                    {/* Label Point */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Label Point / Dispatch Hub
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.labelPoint}
-                        onChange={(e) => setFormData({ ...formData, labelPoint: e.target.value })}
-                        placeholder="e.g. Primary Delivery, Central Hub"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: MEMBERSHIP DETAILS (INTEGRATED WITH MEMBERSHIP TYPE MASTER) */}
-              {activeFormSection === 'membership' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Membership Type (from Master) */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Membership Type <span className="text-red-500">*</span>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Select Havyaka Membership Type: <span className="text-red-600">*</span>
                       </label>
                       <select
                         value={formData.membershipTypeId}
-                        onChange={(e) => {
-                          const typeId = e.target.value;
-                          const tObj = membershipTypes.find((mt) => mt.id === typeId);
-                          setFormData({
-                            ...formData,
-                            membershipTypeId: typeId,
-                            membershipType: tObj ? tObj.name : ''
-                          });
-                        }}
-                        className={`w-full px-3.5 py-2.5 bg-white border rounded-xl text-sm font-semibold text-[#180200] focus:outline-none transition-colors ${formErrors.membershipTypeId
-                          ? 'border-red-500 ring-1 ring-red-500/30 bg-red-50/20'
-                          : 'border-[#E8DFD8] focus:border-[#510601] focus:ring-1 focus:ring-[#510601]'
+                        onChange={(e) => handleMembershipTypeSelect(e.target.value)}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.membershipTypeId ? 'border-red-500' : 'border-[#D1D5DB]'
                           }`}
                       >
-                        <option value="">-- Select Membership Type --</option>
+                        <option value="">Select a Havyaka membership type</option>
                         {activeMembershipTypes.map((mt) => (
                           <option key={mt.id} value={mt.id}>
-                            {mt.name} (Rs. {mt.currentPrice?.toLocaleString('en-IN')})
+                            {mt.name} (Rs. {mt.currentPrice?.toLocaleString('en-IN') || mt.price || mt.fee})
                           </option>
                         ))}
                       </select>
                       {formErrors.membershipTypeId && (
-                        <p className="text-xs text-red-600 mt-1 font-medium flex items-center gap-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          {formErrors.membershipTypeId}
-                        </p>
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.membershipTypeId}</p>
                       )}
                     </div>
+                  </div>
 
-                    {/* Category */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Category
-                      </label>
-                      <select
-                        value={formData.category}
-                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                  {/* Red separator bar */}
+                  <div className="border-b border-[#8C1801] my-2" />
+
+                  {/* Photo upload + Basic Details (2 columns right) */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                    {/* Left: Photo Upload */}
+                    <div className="md:col-span-3 flex flex-col items-center">
+                      <div className="w-full h-44 border border-[#D1D5DB] bg-[#F9FAFB] flex flex-col items-center justify-center relative overflow-hidden rounded">
+                        {formData.photoUrl ? (
+                          <img
+                            src={formData.photoUrl}
+                            alt="Member Photo"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-[#9CA3AF] flex flex-col items-center justify-center p-4 text-center">
+                            <User className="w-12 h-12 stroke-[1.2] text-[#9CA3AF]" />
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full mt-2 py-1.5 px-3 bg-[#4B5563] hover:bg-[#374151] text-white text-xs font-medium rounded text-center transition-colors cursor-pointer"
                       >
-                        {MEMBER_CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Profession */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Profession
-                      </label>
+                        Select Image
+                      </button>
                       <input
-                        type="text"
-                        value={formData.profession}
-                        onChange={(e) => setFormData({ ...formData, profession: e.target.value })}
-                        placeholder="e.g. Advocate, Engineer, Agriculture, Doctor"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleImageSelect}
+                        accept="image/*"
+                        className="hidden"
                       />
                     </div>
 
-                    {/* Company */}
-                    <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Company / Organization
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.company}
-                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                        placeholder="e.g. Infosys, Self Employed, Govt"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
-                      />
+                    {/* Right: Member Name, Father/Husband Name, Mobile, Email, DOB, Age */}
+                    <div className="md:col-span-9 grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* New Member Name */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          New Member Name: <span className="text-red-600">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) => {
+                            setFormData({ ...formData, name: e.target.value });
+                            if (formErrors.name) setFormErrors({ ...formErrors, name: '' });
+                          }}
+                          className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.name ? 'border-red-500' : 'border-[#D1D5DB]'
+                            }`}
+                        />
+                        {formErrors.name && (
+                          <p className="text-[11px] text-red-600 mt-0.5">{formErrors.name}</p>
+                        )}
+                      </div>
+
+                      {/* Father / Husband Name */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Father / Husband Name: <span className="text-red-600">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.fatherHusbandName}
+                          onChange={(e) => {
+                            setFormData({ ...formData, fatherHusbandName: e.target.value });
+                            if (formErrors.fatherHusbandName)
+                              setFormErrors({ ...formErrors, fatherHusbandName: '' });
+                          }}
+                          className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.fatherHusbandName ? 'border-red-500' : 'border-[#D1D5DB]'
+                            }`}
+                        />
+                        {formErrors.fatherHusbandName && (
+                          <p className="text-[11px] text-red-600 mt-0.5">
+                            {formErrors.fatherHusbandName}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Mobile / Phone Number */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Mobile / Phone Number: <span className="text-red-600">*</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="w-28 shrink-0">
+                            <CountryCodeSelect
+                              value={formData.mobileCountryCode}
+                              countryIso={formData.mobileCountryIso}
+                              onChange={handleMobileCountryChange}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <input
+                              type="tel"
+                              value={formData.mobile}
+                              onChange={(e) => handleMobileChange(e.target.value)}
+                              placeholder="Phone number without country code"
+                              className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.mobile ? 'border-red-500' : 'border-[#D1D5DB]'
+                                }`}
+                            />
+                          </div>
+                        </div>
+                        {formErrors.mobile && (
+                          <p className="text-[11px] text-red-600 mt-0.5">{formErrors.mobile}</p>
+                        )}
+                      </div>
+
+                      {/* WhatsApp Number */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          WhatsApp Number:
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="w-28 shrink-0">
+                            <CountryCodeSelect
+                              value={formData.whatsappCountryCode}
+                              countryIso={formData.whatsappCountryIso}
+                              onChange={handleWhatsAppCountryChange}
+                              disabled={isWhatsAppSameAsMobile}
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <input
+                              type="tel"
+                              value={formData.whatsappNumber}
+                              onChange={(e) => handleWhatsAppChange(e.target.value)}
+                              placeholder="WhatsApp number without country code"
+                              readOnly={isWhatsAppSameAsMobile}
+                              className={`w-full px-3 py-2 border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${isWhatsAppSameAsMobile
+                                  ? 'bg-stone-100 text-stone-600 border-[#D1D5DB] cursor-not-allowed'
+                                  : 'bg-[#F9FAFB] border-[#D1D5DB]'
+                                } ${formErrors.whatsappNumber ? 'border-red-500' : ''}`}
+                            />
+                          </div>
+                        </div>
+                        {formErrors.whatsappNumber && (
+                          <p className="text-[11px] text-red-600 mt-0.5">{formErrors.whatsappNumber}</p>
+                        )}
+                        <label className="flex items-center gap-2 mt-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={isWhatsAppSameAsMobile}
+                            onChange={(e) => handleWhatsAppSameAsMobileToggle(e.target.checked)}
+                            className="w-4 h-4 rounded text-[#510601] focus:ring-[#510601] border-gray-300 accent-[#510601] cursor-pointer"
+                          />
+                          <span className="text-xs text-[#374151] font-medium">
+                            WhatsApp number is same as mobile/phone number
+                          </span>
+                        </label>
+                      </div>
+
+                      {/* Email */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Email: <span className="text-red-600">*</span>
+                        </label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => {
+                            setFormData({ ...formData, email: e.target.value });
+                            if (formErrors.email) setFormErrors({ ...formErrors, email: '' });
+                          }}
+                          className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.email ? 'border-red-500' : 'border-[#D1D5DB]'
+                            }`}
+                        />
+                        {formErrors.email && (
+                          <p className="text-[11px] text-red-600 mt-0.5">{formErrors.email}</p>
+                        )}
+                      </div>
+
+                      {/* Date of Birth */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Date of Birth: <span className="text-red-600">*</span>
+                        </label>
+                        <DateInput
+                          value={formData.birthDate}
+                          onChange={handleDobChange}
+                          name="birthDate"
+                          className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.birthDate ? 'border-red-500' : 'border-[#D1D5DB]'
+                            }`}
+                        />
+                        {formErrors.birthDate && (
+                          <p className="text-[11px] text-red-600 mt-0.5">{formErrors.birthDate}</p>
+                        )}
+                      </div>
+
+                      {/* Age */}
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">Age:</label>
+                        <input
+                          type="text"
+                          value={formData.age}
+                          onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                          placeholder="Auto-calculated or enter age"
+                          className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* TAB 4: ADDITIONAL MEMBER DETAILS */}
-              {activeFormSection === 'additional' && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    {/* Gotra */}
+                  {/* 3-Column Grid Fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+                    {/* Row 1: Gothra, Gender, Blood Group */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Gotra
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Gothra: <span className="text-red-600">*</span>
                       </label>
                       <select
                         value={formData.gothra}
-                        onChange={(e) => setFormData({ ...formData, gothra: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        onChange={(e) => {
+                          setFormData({ ...formData, gothra: e.target.value });
+                          if (formErrors.gothra) setFormErrors({ ...formErrors, gothra: '' });
+                        }}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.gothra ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
                       >
+                        <option value="">Select Gotra</option>
                         {gothras.map((g) => (
                           <option key={g} value={g}>
                             {g}
                           </option>
                         ))}
                       </select>
+                      {formErrors.gothra && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.gothra}</p>
+                      )}
                     </div>
 
-                    {/* Blood Group */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Blood Group
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Gender: <span className="text-red-600">*</span>
+                      </label>
+                      <select
+                        value={formData.gender}
+                        onChange={(e) => {
+                          setFormData({ ...formData, gender: e.target.value });
+                          if (formErrors.gender) setFormErrors({ ...formErrors, gender: '' });
+                        }}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.gender ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
+                      >
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {formErrors.gender && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.gender}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Blood Group:
                       </label>
                       <select
                         value={formData.bloodGroup}
                         onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       >
+                        <option value="">Select Blood Group</option>
                         {BLOOD_GROUPS.map((bg) => (
                           <option key={bg} value={bg}>
                             {bg}
@@ -1559,509 +1676,685 @@ export default function MembershipList() {
                       </select>
                     </div>
 
-                    {/* Birth Date */}
+                    {/* Row 2: Aadhar Number, Communication Address, Pin Code */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Date of Birth
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Aadhar Number: <span className="text-red-600">*</span>
                       </label>
                       <input
-                        type="date"
-                        value={formData.birthDate}
-                        onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        type="text"
+                        maxLength={12}
+                        value={formData.aadharNumber}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          setFormData({ ...formData, aadharNumber: val });
+                          if (formErrors.aadharNumber)
+                            setFormErrors({ ...formErrors, aadharNumber: '' });
+                        }}
+                        placeholder="12 digit Aadhar Number"
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.aadharNumber ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
+                      />
+                      {formErrors.aadharNumber && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.aadharNumber}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Communication Address: <span className="text-red-600">*</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.address}
+                        onChange={(e) => {
+                          setFormData({ ...formData, address: e.target.value });
+                          if (formErrors.address) setFormErrors({ ...formErrors, address: '' });
+                        }}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.address ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
+                      />
+                      {formErrors.address && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.address}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Pin Code: <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={formData.postalCode}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          setFormData({ ...formData, postalCode: val });
+                          if (formErrors.postalCode) setFormErrors({ ...formErrors, postalCode: '' });
+                        }}
+                        placeholder="6 digit PIN Code"
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.postalCode ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
+                      />
+                      {formErrors.postalCode && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.postalCode}</p>
+                      )}
+                    </div>
+
+                    {/* Row 3: Native Place, Applying behalf of, Qualification */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Native Place:
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.nativePlace}
+                        onChange={(e) => setFormData({ ...formData, nativePlace: e.target.value })}
+                        placeholder="Village :: Taluk :: District"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       />
                     </div>
 
-                    {/* Status */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Status
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Applying this Membership on behalf of: <span className="text-red-600">*</span>
                       </label>
                       <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        value={formData.appliedOnBehalfOf}
+                        onChange={(e) => {
+                          setFormData({ ...formData, appliedOnBehalfOf: e.target.value });
+                          if (formErrors.appliedOnBehalfOf)
+                            setFormErrors({ ...formErrors, appliedOnBehalfOf: '' });
+                        }}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.appliedOnBehalfOf ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
                       >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
+                        {BEHALF_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                      {formErrors.appliedOnBehalfOf && (
+                        <p className="text-[11px] text-red-600 mt-0.5">
+                          {formErrors.appliedOnBehalfOf}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Qualification: <span className="text-red-600">*</span>
+                      </label>
+                      <SearchableFormSelect
+                        value={formData.qualification}
+                        onChange={(val) => {
+                          setFormData({ ...formData, qualification: val });
+                          if (formErrors.qualification)
+                            setFormErrors({ ...formErrors, qualification: '' });
+                        }}
+                        options={QUALIFICATIONS_LIST}
+                        placeholder="Select Qualification"
+                        searchPlaceholder="Search qualification..."
+                        hasError={Boolean(formErrors.qualification)}
+                        maxHeightClass="max-h-52"
+                      />
+                      {formErrors.qualification && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.qualification}</p>
+                      )}
+                    </div>
+
+                    {/* Row 4: Employment, Do you need Havyaka Magazine */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Employment:
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.employment}
+                        onChange={(e) => setFormData({ ...formData, employment: e.target.value })}
+                        placeholder="e.g. Agriculture, Software Engineer"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Do you need Havyaka Magazine Every month? <span className="text-red-600">*</span>
+                      </label>
+                      <select
+                        value={formData.magazineNeeded}
+                        onChange={(e) => {
+                          setFormData({ ...formData, magazineNeeded: e.target.value });
+                          if (formErrors.magazineNeeded)
+                            setFormErrors({ ...formErrors, magazineNeeded: '' });
+                        }}
+                        className={`w-full px-3 py-2 bg-[#F9FAFB] border rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601] ${formErrors.magazineNeeded ? 'border-red-500' : 'border-[#D1D5DB]'
+                          }`}
+                      >
+                        <option value="">Select YES/NO</option>
+                        <option value="YES">YES</option>
+                        <option value="NO">NO</option>
+                      </select>
+                      {formErrors.magazineNeeded && (
+                        <p className="text-[11px] text-red-600 mt-0.5">{formErrors.magazineNeeded}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section: Membership Referred By */}
+                  <div className="pt-2">
+                    <h3 className="text-sm font-semibold text-[#8C1801] mb-2">
+                      Membership Referred By:
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm text-[#374151] mb-1 font-medium">
+                          <span>Membership Number:</span>
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-400 text-black text-[9px] font-bold cursor-pointer"
+                            title="Referral membership number"
+                          >
+                            i
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.referredMembershipNo}
+                          onChange={(e) =>
+                            setFormData({ ...formData, referredMembershipNo: e.target.value })
+                          }
+                          className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Membership Name:
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.referredMembershipName}
+                          onChange={(e) =>
+                            setFormData({ ...formData, referredMembershipName: e.target.value })
+                          }
+                          className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Mahasabha Membership Details in Family */}
+                  <div className="pt-2">
+                    <h3 className="text-sm font-semibold text-[#8C1801] mb-2">
+                      Mahasabha Membership Details in Family:
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="flex items-center gap-1.5 text-sm text-[#374151] mb-1 font-medium">
+                          <span>Membership Number:</span>
+                          <span
+                            className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-400 text-black text-[9px] font-bold cursor-pointer"
+                            title="Family member membership number"
+                          >
+                            i
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.familyMembershipNo}
+                          onChange={(e) =>
+                            setFormData({ ...formData, familyMembershipNo: e.target.value })
+                          }
+                          className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-[#374151] mb-1 font-medium">
+                          Membership Name:
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.familyMembershipName}
+                          onChange={(e) =>
+                            setFormData({ ...formData, familyMembershipName: e.target.value })
+                          }
+                          className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Next button */}
+                  <div className="flex justify-end pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFormSection('paymentInfo')}
+                      className="px-6 py-2 bg-[#510601] hover:bg-[#8C1801] text-white font-bold text-sm rounded shadow transition-colors cursor-pointer"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: PAYMENT INFORMATION */}
+              {activeFormSection === 'paymentInfo' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Payment Mode */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Payment Mode: <span className="text-red-600">*</span>
+                      </label>
+                      <select
+                        value={formData.paymentMode}
+                        onChange={(e) => setFormData({ ...formData, paymentMode: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                      >
+                        {paymentModes.map((mode) => (
+                          <option key={mode} value={mode}>
+                            {mode}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
-                    {/* Expire Date (Conditional / Optional) */}
+                    {/* Bank Account / Name */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Expire Date (if applicable)
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Bank Account / Name:
                       </label>
                       <input
-                        type="date"
-                        value={formData.expireDate}
-                        onChange={(e) => setFormData({ ...formData, expireDate: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        type="text"
+                        value={formData.bankAccount}
+                        onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
+                        placeholder="e.g. Canara Bank, SBI"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       />
                     </div>
 
-                    {/* Website */}
+                    {/* Amount */}
                     <div>
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Website / Social
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Amount (Rs.): <span className="text-red-600">*</span>
                       </label>
                       <input
                         type="text"
-                        value={formData.website}
-                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                        placeholder="https://..."
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        inputMode="numeric"
+                        value={formData.amount}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^\d.]/g, '');
+                          setFormData({ ...formData, amount: val });
+                        }}
+                        onWheel={(e) => e.target.blur()}
+                        placeholder="Membership fee amount"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm font-semibold text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       />
                     </div>
 
-                    {/* Native Details */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Native Place & Family Heritage Details
+                    {/* Receipt Date */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Receipt Date: <span className="text-red-600">*</span>
                       </label>
-                      <input
-                        type="text"
-                        value={formData.nativeDetails}
-                        onChange={(e) => setFormData({ ...formData, nativeDetails: e.target.value })}
-                        placeholder="e.g. Sirsi - Sonda Matha, Hegde Mane"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                      <DateInput
+                        value={formData.receiptDate}
+                        onChange={(e) => setFormData({ ...formData, receiptDate: e.target.value })}
+                        name="receiptDate"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       />
                     </div>
 
-                    {/* Magazine Remarks */}
-                    <div className="sm:col-span-3">
-                      <label className="block text-xs font-bold text-[#180200] uppercase tracking-wider mb-1.5">
-                        Magazine Dispatch Remarks (Havyaka Sandesha)
+                    {/* Transaction ID / Cheque No */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Transaction ID / Cheque No.:
                       </label>
                       <input
                         type="text"
-                        value={formData.magazineRemarks}
-                        onChange={(e) => setFormData({ ...formData, magazineRemarks: e.target.value })}
-                        placeholder="e.g. Send to Sirsi address, By Post"
-                        className="w-full px-3.5 py-2.5 bg-white border border-[#E8DFD8] rounded-xl text-sm font-medium text-[#180200] focus:outline-none focus:border-[#510601]"
+                        value={formData.transactionId}
+                        onChange={(e) =>
+                          setFormData({ ...formData, transactionId: e.target.value })
+                        }
+                        placeholder="e.g. UTR / CHQ-10492"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
                       />
+                    </div>
+
+                    {/* Transaction Date */}
+                    <div>
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Transaction Date:
+                      </label>
+                      <DateInput
+                        value={formData.transactionDate}
+                        onChange={(e) =>
+                          setFormData({ ...formData, transactionDate: e.target.value })
+                        }
+                        name="transactionDate"
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                      />
+                    </div>
+
+                    {/* Payment Remarks */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm text-[#374151] mb-1 font-medium">
+                        Payment Received Details / Remarks:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.paymentRemarks}
+                        onChange={(e) =>
+                          setFormData({ ...formData, paymentRemarks: e.target.value })
+                        }
+                        placeholder="Additional payment notes..."
+                        className="w-full px-3 py-2 bg-[#F9FAFB] border border-[#D1D5DB] rounded text-sm text-[#1F2937] focus:outline-none focus:border-[#510601]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer buttons on tab 2 */}
+                  <div className="flex items-center justify-between pt-4 border-t border-[#E8DFD8]">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFormSection('membershipDetails')}
+                      className="px-4 py-2 border border-[#D1D5DB] text-[#374151] hover:bg-gray-100 text-xs font-semibold rounded transition-colors cursor-pointer"
+                    >
+                      Previous
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsFormModalOpen(false)}
+                        className="px-4 py-2 border border-[#D1D5DB] text-[#374151] hover:bg-gray-100 text-xs font-semibold rounded transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-2 bg-[#510601] hover:bg-[#8C1801] text-white font-bold text-xs rounded shadow transition-colors cursor-pointer"
+                      >
+                        {formModalMode === 'add' ? 'Submit Membership' : 'Save Changes'}
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-[#E8DFD8] bg-[#FAF7F2]/60">
-              <div className="flex items-center gap-2">
-                {activeFormSection !== 'personal' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeFormSection === 'location') setActiveFormSection('personal');
-                      else if (activeFormSection === 'membership') setActiveFormSection('location');
-                      else if (activeFormSection === 'additional') setActiveFormSection('membership');
-                    }}
-                    className="py-2 px-3 text-xs font-semibold text-[#863221] hover:bg-white rounded-xl border border-[#E8DFD8] transition-colors cursor-pointer"
-                  >
-                    Previous Section
-                  </button>
-                )}
-                {activeFormSection !== 'additional' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeFormSection === 'personal') setActiveFormSection('location');
-                      else if (activeFormSection === 'location') setActiveFormSection('membership');
-                      else if (activeFormSection === 'membership') setActiveFormSection('additional');
-                    }}
-                    className="py-2 px-3 text-xs font-semibold text-[#510601] hover:bg-white rounded-xl border border-[#510601]/20 transition-colors cursor-pointer"
-                  >
-                    Next Section
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsFormModalOpen(false)}
-                  className="py-2.5 px-4 border border-[#E8DFD8] text-[#863221] hover:text-[#180200] hover:bg-white text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="py-2.5 px-5 bg-[#510601] hover:bg-[#863221] text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
-                >
-                  {formModalMode === 'add' ? 'Complete Registration' : 'Save Changes'}
-                </button>
-              </div>
             </div>
           </form>
         </div>
       </Modal>
 
       {/* ==================================================== */}
-      {/* MODAL 2: VIEW MEMBER PROFILE MODAL                   */}
+      {/* MODAL 2: VIEW MEMBER DETAILS (MATCHING REFERENCE UI)   */}
       {/* ==================================================== */}
       <Modal isOpen={Boolean(viewingMember)} onClose={() => setViewingMember(null)}>
-        {viewingMember && (
-          <div
-            className="bg-white rounded-2xl max-w-2xl w-full border border-[#E8DFD8] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8DFD8] bg-[#FAF7F2]">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-[#510601] text-white flex items-center justify-center font-bold text-base">
-                  {(viewingMember.fullName || viewingMember.name || 'M').charAt(0).toUpperCase()}
+        {viewingMember && (() => {
+          const matchedReceipt = findMatchingReceiptForMember(viewingMember);
+          const appNo = viewingMember.membershipNumber || viewingMember.registrationNumber || viewingMember.applicationNo || viewingMember.id || '—';
+          const memberName = viewingMember.membershipName || viewingMember.fullName || viewingMember.name || '—';
+          const memTypeCategory = viewingMember.membershipTypeCategory || viewingMember.category || 'Havyaka & Mangalya';
+          const havyakaMemType = viewingMember.membershipType || viewingMember.type || 'Poshaka';
+          const memBelongsTo = viewingMember.appliedOnBehalfOf || viewingMember.membershipBelongsTo || 'Self';
+          const fatherHusband = viewingMember.fatherHusbandName || viewingMember.fatherName || viewingMember.guardianName || '—';
+          const mobileNo = viewingMember.contactNumber || viewingMember.mobile || viewingMember.mobileNumber || viewingMember.phoneNumber || viewingMember.phone || '—';
+
+          const rawDob = viewingMember.birthDate || viewingMember.dob || viewingMember.dateOfBirth;
+          const dobFormatted = rawDob ? formatDate(rawDob) : '—';
+          const ageVal = viewingMember.age || (rawDob ? calculateAge(rawDob) : null);
+          const dobDisplay = rawDob ? (ageVal ? `${dobFormatted} (Age: ${ageVal})` : dobFormatted) : '—';
+
+          const genderVal = viewingMember.gender || '—';
+          const aadharNo = viewingMember.aadharNumber || viewingMember.aadhar_no || viewingMember.aadhaarNo || '—';
+
+          const addressParts = [
+            viewingMember.addressLine || viewingMember.address,
+            viewingMember.locality || viewingMember.place,
+            viewingMember.talukName || viewingMember.taluk,
+            viewingMember.districtName || viewingMember.district
+          ].filter(Boolean);
+          const fullAddress = addressParts.length > 0 ? addressParts.join(', ') : (viewingMember.address || viewingMember.addressLine || '—');
+
+          const pincodeVal = viewingMember.postalCode || viewingMember.pinCode || viewingMember.pincode || '—';
+          const nativePlaceVal = viewingMember.nativePlace || viewingMember.nativeDetails || '—';
+          const qualificationVal = viewingMember.qualification || '—';
+          const employmentVal = viewingMember.employment || viewingMember.profession || '—';
+          const magazineVal = viewingMember.magazineNeeded || (viewingMember.monthlyMagazine !== undefined ? viewingMember.monthlyMagazine : (viewingMember.magazineRemarks || 'YES'));
+
+          const refReceiptNo = matchedReceipt?.receiptNumber || viewingMember.assignedReceiptNumber || viewingMember.transactionId || viewingMember.receiptNumber || '—';
+          const refDate = matchedReceipt?.receiptDate ? formatDate(matchedReceipt.receiptDate) : (viewingMember.receiptDate ? formatDate(viewingMember.receiptDate) : (viewingMember.transactionDate ? formatDate(viewingMember.transactionDate) : '—'));
+          const refAmount = matchedReceipt?.amount !== undefined ? matchedReceipt.amount : (viewingMember.amount !== undefined ? viewingMember.amount : '—');
+          const refPaymentSource = matchedReceipt?.paymentMode ? `${matchedReceipt.paymentMode}${matchedReceipt.bankAccount ? ` - ${matchedReceipt.bankAccount}` : ''}` : (viewingMember.paymentMode ? `${viewingMember.paymentMode}${viewingMember.bankAccount ? ` - ${viewingMember.bankAccount}` : ''}` : '—');
+          const refPaymentDesc = matchedReceipt?.description || viewingMember.paymentRemarks || viewingMember.description || '—';
+
+          return (
+            <div
+              className="bg-white rounded-xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Red Header Bar */}
+              <div className="flex items-center justify-between bg-[#E53935] px-5 py-2.5 text-white">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-bold text-base text-white tracking-wide">
+                    Membership Details
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const m = viewingMember;
+                      setViewingMember(null);
+                      navigate('/dashboard/membership/edit', {
+                        state: {
+                          member: m,
+                          membershipNumber: m.membershipNumber,
+                          mode: 'edit',
+                          returnPath: '/dashboard/membership/list'
+                        }
+                      });
+                    }}
+                    className="bg-white text-stone-700 hover:bg-stone-100 text-xs font-semibold px-2.5 py-1 rounded border border-stone-300 transition-colors cursor-pointer"
+                  >
+                    Edit Membership
+                  </button>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-[#180200]">
-                      {viewingMember.fullName || viewingMember.name}
-                    </h3>
-                    {viewingMember.membershipNumber && (
-                      <span className="font-mono font-bold text-xs bg-[#FAF7F2] text-[#510601] px-2 py-0.5 rounded border border-[#E8DFD8]">
-                        #{viewingMember.membershipNumber}
-                      </span>
-                    )}
-                  </div>
-                  {(() => {
-                    const memStatus = calculateMemberMembershipStatus(viewingMember, receipts, membershipTypes);
-                    return (
-                      <p className="text-xs text-[#863221]">
-                        {memStatus.isMilestoneReached ? `${memStatus.currentMembershipType} Member` : 'Member (Milestone in progress)'}
-                      </p>
-                    );
-                  })()}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingMember(null)}
+                  className="text-white hover:text-white/80 transition-colors p-1 rounded cursor-pointer"
+                  title="Close"
+                >
+                  <X className="w-5 h-5 text-white" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setViewingMember(null)}
-                className="text-[#863221]/60 hover:text-[#180200] p-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Profile Body */}
-            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto text-xs text-[#180200]">
-              {/* Dynamic Membership Milestone & Cumulative Contribution Card */}
-              {(() => {
-                const memStatus = calculateMemberMembershipStatus(viewingMember, receipts, membershipTypes);
-                return (
-                  <>
-                    <div className="bg-gradient-to-br from-[#FAF7F2] to-white rounded-2xl p-4 border border-[#510601]/20 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-[#510601] text-white">
-                          <TrendingUp className="w-4 h-4" />
-                        </div>
-                        <span className="font-bold text-xs uppercase tracking-wider text-[#510601]">
-                          Cumulative Membership Milestone Progress
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-[#863221] font-semibold bg-white px-2 py-0.5 rounded-full border border-[#E8DFD8]">
-                        Source: Masters → Membership Types
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                      <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD8]">
-                        <span className="text-[10px] uppercase font-bold text-[#863221] block">Total Paid</span>
-                        <p className="font-mono font-bold text-base text-[#510601] mt-0.5">
-                          ₹{memStatus.totalMembershipPaid.toLocaleString('en-IN')}
-                        </p>
-                      </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD8]">
-                        <span className="text-[10px] uppercase font-bold text-[#863221] block">Current Member</span>
-                        <p className="font-bold text-sm text-[#180200] mt-0.5 flex items-center gap-1">
-                          {memStatus.isMilestoneReached ? (
-                            <>
-                              <Award className="w-3.5 h-3.5 text-[#510601]" />
-                              <span>{memStatus.currentMembershipType}</span>
-                            </>
-                          ) : (
-                            <span className="text-amber-800 text-xs">Not Yet Reached</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD8]">
-                        <span className="text-[10px] uppercase font-bold text-[#863221] block">Next Milestone</span>
-                        <p className="font-bold text-xs text-[#180200] mt-0.5">
-                          {memStatus.nextMilestoneType ? (
-                            <span>{memStatus.nextMilestoneType} (₹{memStatus.nextMilestoneAmount.toLocaleString('en-IN')})</span>
-                          ) : (
-                            <span className="text-emerald-700 font-semibold">Highest Milestone Achieved</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="bg-white p-2.5 rounded-xl border border-[#E8DFD8]">
-                        <span className="text-[10px] uppercase font-bold text-[#863221] block">Remaining</span>
-                        <p className="font-mono font-bold text-sm text-[#863221] mt-0.5">
-                          {memStatus.nextMilestoneType ? (
-                            `₹${memStatus.remainingAmount.toLocaleString('en-IN')}`
-                          ) : (
-                            <span className="text-emerald-700">₹0</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Progress indicator */}
-                    {memStatus.nextMilestoneAmount && memStatus.nextMilestoneAmount > 0 && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-[#863221]">
-                          <span>Progress to {memStatus.nextMilestoneType}</span>
-                          <span className="font-mono font-semibold">
-                            {Math.min(100, Math.round((memStatus.totalMembershipPaid / memStatus.nextMilestoneAmount) * 100))}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-[#E8DFD8] rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className="bg-[#510601] h-1.5 rounded-full transition-all duration-500"
-                            style={{
-                              width: `${Math.min(100, (memStatus.totalMembershipPaid / memStatus.nextMilestoneAmount) * 100)}%`
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Contributing Membership Receipts List */}
-                    {memStatus.receipts.length > 0 && (
-                      <div className="pt-2 border-t border-[#E8DFD8]">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#863221] flex items-center gap-1 mb-1.5">
-                          <Receipt className="w-3 h-3 text-[#510601]" />
-                          <span>Linked Membership Receipts ({memStatus.receipts.length})</span>
-                        </span>
-                        <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
-                          {memStatus.receipts.map((r) => (
-                            <div
-                              key={r.id || r.receiptNumber}
-                              className="flex items-center justify-between p-1.5 bg-white rounded-lg border border-[#E8DFD8] text-[11px]"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-[#510601]">#{r.receiptNumber}</span>
-                                <span className="text-stone-400">•</span>
-                                <span className="text-[#863221]">{r.receiptDate || '—'}</span>
-                                <span className="text-stone-400">•</span>
-                                <span className="text-stone-600 font-medium">{r.paymentMode || 'Cash'}</span>
-                              </div>
-                              <span className="font-mono font-bold text-[#180200]">
-                                ₹{Number(r.amount).toLocaleString('en-IN')}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Section 2: Donations & Other Contributions (Separate from Membership Milestones) */}
-                  <div className="bg-white rounded-2xl p-4 border border-[#E8DFD8] shadow-sm space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-amber-100/80 text-amber-800">
-                          <Coins className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-xs uppercase tracking-wider text-[#180200]">
-                            Donations & Other Contributions
-                          </h4>
-                          <p className="text-[10px] text-[#863221]">
-                            Non-membership receipts (Donations, Hostel, Scholarship, Events, etc.)
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-[#863221] block">Total Contributed</span>
-                        <span className="font-mono font-bold text-sm text-[#3D705C]">
-                          ₹{memStatus.totalOtherPaid.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {memStatus.otherReceipts && memStatus.otherReceipts.length > 0 ? (
-                      <div className="pt-2 border-t border-[#E8DFD8]">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs">
-                            <thead>
-                              <tr className="bg-[#FAF7F2] text-[#863221] text-[10px] uppercase font-bold tracking-wider border-b border-[#E8DFD8]">
-                                <th className="py-2 px-2.5">Receipt No.</th>
-                                <th className="py-2 px-2.5">Date</th>
-                                <th className="py-2 px-2.5">Particulars</th>
-                                <th className="py-2 px-2.5">Sub-Type / Details</th>
-                                <th className="py-2 px-2.5">Payment Mode</th>
-                                <th className="py-2 px-2.5 text-right">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#E8DFD8]/60">
-                              {memStatus.otherReceipts.map((r) => {
-                                const subType =
-                                  r.donationSubType ||
-                                  r.donationDetails ||
-                                  r.othersDescription ||
-                                  r.paymentReceivedDetails ||
-                                  '—';
-                                return (
-                                  <tr key={r.id || r.receiptNumber} className="hover:bg-[#FAF7F2]/40 transition-colors">
-                                    <td className="py-2 px-2.5 font-mono font-bold text-[#510601]">
-                                      #{r.receiptNumber}
-                                    </td>
-                                    <td className="py-2 px-2.5 text-[#863221] font-mono text-[11px]">
-                                      {r.receiptDate || '—'}
-                                    </td>
-                                    <td className="py-2 px-2.5 font-semibold text-[#180200]">
-                                      {r.particulars}
-                                    </td>
-                                    <td className="py-2 px-2.5 text-[#863221] text-[11px]">
-                                      {subType}
-                                    </td>
-                                    <td className="py-2 px-2.5 text-stone-600 text-[11px]">
-                                      {r.paymentMode || 'Cash'}
-                                    </td>
-                                    <td className="py-2 px-2.5 text-right font-mono font-bold text-[#180200]">
-                                      ₹{Number(r.amount).toLocaleString('en-IN')}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto max-h-[78vh] space-y-6 text-xs sm:text-[13px] text-stone-800">
+                {/* Photo Top Center */}
+                <div className="flex justify-center">
+                  <div className="w-36 h-44 bg-stone-100 rounded-lg overflow-hidden border border-stone-300 shadow-sm flex items-center justify-center">
+                    {viewingMember.photoUrl || viewingMember.photo || viewingMember.image || viewingMember.avatar ? (
+                      <img
+                        src={viewingMember.photoUrl || viewingMember.photo || viewingMember.image || viewingMember.avatar}
+                        alt={memberName}
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
-                      <div className="pt-2 border-t border-[#E8DFD8]/60 text-center py-2.5 text-stone-400 text-xs">
-                        No donations or non-membership receipts recorded for this member.
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-stone-200 text-stone-400">
+                        <User className="w-14 h-14 text-stone-400/80 mb-1" />
+                        <span className="text-[11px] font-medium text-stone-500">No Photo</span>
                       </div>
                     )}
                   </div>
-                </>
-              );
-            })()}
-              {/* Card 1: Contact & Basic Info */}
-              <div className="bg-[#FAF7F2]/40 rounded-xl p-4 border border-[#E8DFD8] grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Mobile</span>
-                  <p className="font-mono font-bold text-sm text-[#510601] mt-0.5">
-                    {viewingMember.mobile || viewingMember.mobileNumber || '—'}
-                  </p>
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Email</span>
-                  <p className="font-medium mt-0.5">{viewingMember.email || '—'}</p>
+
+                {/* Main Details Table / Grid */}
+                <div className="max-w-2xl mx-auto space-y-2 leading-relaxed">
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Application No.:</span>
+                    <span className="col-span-7 text-stone-700 font-mono">{appNo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Membership Name:</span>
+                    <span className="col-span-7 text-stone-800 font-semibold">{memberName}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Membership Type:</span>
+                    <span className="col-span-7 text-stone-700">{memTypeCategory}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Havyaka Membership Type:</span>
+                    <span className="col-span-7 text-stone-700">{havyakaMemType}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Membership belongs to:</span>
+                    <span className="col-span-7 text-stone-700">{memBelongsTo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Father/Husband Name:</span>
+                    <span className="col-span-7 text-stone-700">{fatherHusband}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Mobile No.:</span>
+                    <span className="col-span-7 text-stone-700 font-mono">{mobileNo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Date Of Birth:</span>
+                    <span className="col-span-7 text-stone-700 font-mono">{dobDisplay}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Gender:</span>
+                    <span className="col-span-7 text-stone-700">{genderVal}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">aadhar_no :</span>
+                    <span className="col-span-7 text-stone-700 font-mono">{aadharNo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Address:</span>
+                    <span className="col-span-7 text-stone-700">{fullAddress}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Pincode:</span>
+                    <span className="col-span-7 text-stone-700 font-mono">{pincodeVal}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Native Place:</span>
+                    <span className="col-span-7 text-stone-700">{nativePlaceVal}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Qualification:</span>
+                    <span className="col-span-7 text-stone-700">{qualificationVal}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Employment:</span>
+                    <span className="col-span-7 text-stone-700">{employmentVal}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-5 font-bold text-stone-800">Monthly Havyaka Magazine:</span>
+                    <span className="col-span-7 text-stone-700">{magazineVal}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Alt Phone</span>
-                  <p className="font-mono mt-0.5">{viewingMember.phone || '—'}</p>
+
+                {/* Sub-sections: Membership Referred By & Family Membership Details */}
+                <div className="max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
+                  {/* Left: Membership Referred By */}
+                  <div className="space-y-1.5">
+                    <h4 className="font-bold text-xs uppercase tracking-wide text-[#7C3AED]">
+                      Membership Reffered By
+                    </h4>
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-stone-800 text-xs">Membership Number:</span>
+                      <span className="text-stone-700 font-mono text-xs">{viewingMember.referredMembershipNo || '—'}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-stone-800 text-xs">Membership Name:</span>
+                      <span className="text-stone-700 text-xs">{viewingMember.referredMembershipName || '—'}</span>
+                    </div>
+                  </div>
+
+                  {/* Right: Family Membership Details */}
+                  <div className="space-y-1.5">
+                    <h4 className="font-bold text-xs uppercase tracking-wide text-[#7C3AED]">
+                      Family Membership Details
+                    </h4>
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-stone-800 text-xs">Membership Number:</span>
+                      <span className="text-stone-700 font-mono text-xs">{viewingMember.familyMembershipNo || '—'}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-bold text-stone-800 text-xs">Membership Name:</span>
+                      <span className="text-stone-700 text-xs">{viewingMember.familyMembershipName || '—'}</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Status</span>
-                  <p className="mt-0.5">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${viewingMember.status === 'Active' || viewingMember.status === 'Approved'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}
-                    >
-                      {viewingMember.status || 'Active'}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Gotra</span>
-                  <p className="font-bold mt-0.5">{viewingMember.gothra || '—'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Blood Group</span>
-                  <p className="font-bold mt-0.5">{viewingMember.bloodGroup || '—'}</p>
+
+                {/* PAYMENT INFORMATION */}
+                <div className="max-w-2xl mx-auto space-y-2 pt-2 border-t border-stone-200">
+                  <h4 className="font-bold text-xs uppercase tracking-wide text-[#7C3AED] mb-2">
+                    PAYMENT INFORMATION
+                  </h4>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-6 font-bold text-stone-800">Receipt/Cheque/DD/Online Transfer Reference/UTR Number:</span>
+                    <span className="col-span-6 text-stone-700 font-mono">{refReceiptNo}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-6 font-bold text-stone-800">Date:</span>
+                    <span className="col-span-6 text-stone-700 font-mono">{refDate}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-6 font-bold text-stone-800">Amount:</span>
+                    <span className="col-span-6 text-stone-700 font-mono">{refAmount}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-6 font-bold text-stone-800">Payment Source:</span>
+                    <span className="col-span-6 text-stone-700">{refPaymentSource}</span>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-2 py-0.5">
+                    <span className="col-span-6 font-bold text-stone-800">Payment Description:</span>
+                    <span className="col-span-6 text-stone-700">{refPaymentDesc}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Address & Location Details */}
-              <div className="bg-white rounded-xl p-4 border border-[#E8DFD8] space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-[#510601] uppercase tracking-wider">
-                  <MapPin className="w-4 h-4" />
-                  <span>Address & Geographical Hierarchy</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="sm:col-span-2">
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Street Address</span>
-                    <p className="font-medium mt-0.5">{viewingMember.addressLine || viewingMember.address || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Post / Taluk</span>
-                    <p className="font-medium mt-0.5">{viewingMember.talukName || viewingMember.post || '—'}</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">District & State</span>
-                    <p className="font-medium mt-0.5">
-                      {viewingMember.districtName || '—'}, {viewingMember.stateName || 'Karnataka'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">PIN Code</span>
-                    <p className="font-mono font-bold text-sm text-[#510601] mt-0.5">
-                      {viewingMember.postalCode || '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-[#863221]">Label Point</span>
-                    <p className="font-medium mt-0.5">{viewingMember.labelPoint || 'Primary'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 3: Membership & Magazine Remarks */}
-              <div className="bg-[#FAF7F2]/40 rounded-xl p-4 border border-[#E8DFD8] grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Category</span>
-                  <p className="font-medium mt-0.5">{viewingMember.category || 'Individual'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Profession</span>
-                  <p className="font-medium mt-0.5">{viewingMember.profession || '—'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Native Details</span>
-                  <p className="font-medium mt-0.5">{viewingMember.nativeDetails || '—'}</p>
-                </div>
-                <div className="sm:col-span-3">
-                  <span className="text-[10px] uppercase font-bold text-[#863221]">Magazine Remarks</span>
-                  <p className="font-medium mt-0.5">{viewingMember.magazineRemarks || 'Standard dispatch'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-6 py-4 border-t border-[#E8DFD8] bg-[#FAF7F2]/60">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedMemberIds(new Set([viewingMember.id]));
-                  setIsLabelPreviewOpen(true);
-                  setViewingMember(null);
-                }}
-                className="flex items-center gap-1.5 py-2 px-3.5 bg-white border border-[#510601] text-[#510601] text-xs font-semibold rounded-xl hover:bg-[#FAF7F2] transition-colors cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Preview Label</span>
-              </button>
-              <div className="flex items-center gap-2">
+              {/* Footer with Red Delete button */}
+              <div className="p-3.5 border-t border-stone-200 bg-white flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => {
                     const m = viewingMember;
                     setViewingMember(null);
-                    handleOpenEditModal(m);
+                    setDeleteDialog(m);
                   }}
-                  className="py-2 px-4 bg-[#510601] hover:bg-[#863221] text-white text-xs font-bold rounded-xl shadow-sm transition-colors cursor-pointer"
+                  className="px-4 py-1.5 bg-[#E53935] hover:bg-[#D32F2F] text-white text-xs font-bold rounded shadow-xs transition-colors cursor-pointer"
                 >
-                  Edit Profile
+                  Delete
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* ==================================================== */}

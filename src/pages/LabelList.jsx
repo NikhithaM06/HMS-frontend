@@ -31,16 +31,7 @@ import {
   getStoredMembers,
   getStoredMembershipTypes
 } from '../utils/receiptStore';
-
-// Date formatter
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) {
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-  return dateStr;
-};
+import { formatDate } from '../utils/dateUtils';
 
 export default function LabelList() {
   // Synchronized stores
